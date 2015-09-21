@@ -433,7 +433,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
         gfx_set(0,0.5,0.75);
         gfx_rect(xpos+gap,ypos+h-h/8-gap,w-gap*2,ceil(h/8));
       );
-      gfx_x=xpos + w - gap - 24;
+      gfx_x=xpos + w - gap - (mem_notelist[i]>=100?24:16);
       gfx_y=ypos + h - gap - 8;
       gfx_set(0.5);
       gfx_printf("%d",mem_notelist[i]);
