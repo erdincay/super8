@@ -368,12 +368,8 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
   gap = 4;
-  rowsize=8;
-  while(
-    rowsize/=2;
-    w=0|((gfx_w- gap*(rowsize-1))/rowsize);
-    rowsize>=2 && w < 50;
-  );
+  rowsize=4;
+  w=0|((gfx_w- gap*(rowsize-1))/rowsize);
   
   h=w;
   i=0;
