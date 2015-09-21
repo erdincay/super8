@@ -379,14 +379,14 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
   i=0;
   rec = mem_stlist;
   loop(g_nchan,
-    (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
-       g_monitor=i;
-    );
     i>0 && (i%rowsize) == 0 ? (
       xpos=0;
       ypos += h + gap;
     );
     
+    (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
+       g_monitor=i;
+    );
     mode = rec[st_state];
     gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
     g_monitor == i ? mode|=8;
