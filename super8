@@ -1,0 +1,420 @@
+desc:Super8 MIDI-controlled synchronized looper
+
+// uses natural notes as base pairs for record/play: 
+//   (CD FGA CD) 36, 38, 41, 43, 45, 48, 50, 53
+// note base=start record/end loop. base+1 = play loop (stops record), or stop
+
+in_pin:input 1
+in_pin:input 2
+in_pin:input 3
+in_pin:input 4
+in_pin:input 5
+in_pin:input 6
+in_pin:input 7
+in_pin:input 8
+out_pin:output 1
+out_pin:output 2
+out_pin:output 3
+out_pin:output 4
+out_pin:output 5
+out_pin:output 6
+out_pin:output 7
+out_pin:output 8
+
+@init
+
+gfx_clear=-1;
+g_nchan = 8;
+g_maxlen = 882000; // 20s at 44khz
+g_fadespeed = 0.99;
+g_fadespeed2 = 1.0-g_fadespeed;
+g_shorten_fadesize=0.005*srate; // fade to use when shortening a loop
+
+
+mem_notelist = 0;
+mem_notelist[0] = 36;
+mem_notelist[1] = 38;
+mem_notelist[2] = 41;
+mem_notelist[3] = 43;
+mem_notelist[4] = 45;
+mem_notelist[5] = 48;
+mem_notelist[6] = 50;
+mem_notelist[7] = 53;
+
+mem_stlist = mem_notelist + g_nchan;
+st_state = 0; // 0=off, 1=play, 2=recording
+st_lastmode = 1; // UI flags for mode + monitor + dirty
+
+// set if buffer is dirty, and also may indicate how much of it is 
+// using max(mem_stlist[st_dirty],chX.dirty_top+1)
+st_dirty = 2; 
+
+st_num = 3;
+
+mem_buflist = mem_stlist + g_nchan * st_num;
+
+
+function get_chanbuf(idx) ( mem_buflist + g_maxlen * idx; );
+
+function init(x) instance(idx rec buf monvol fpos fpos2 sk_fpos sk_fpos2 note dirty_top) (
+  idx = x;
+  rec = mem_stlist + x*st_num;
+  buf = get_chanbuf(x);
+  note = mem_notelist[x];
+  monvol = fpos = fpos2 = sk_fpos = sk_fpos2 = 0;
+  dirty_top = -1;
+  rec[st_state]=0;
+  rec[st_lastmode]=-1;
+  rec[st_dirty]=0;
+);
+
+function process(s) instance(buf, fpos, fpos2, monvol) (
+  fpos = fpos*g_fadespeed + this.sk_fpos;
+  fpos2 = fpos2*g_fadespeed + this.sk_fpos2;  
+  monvol = monvol*g_fadespeed + (g_monitor == this.idx)*g_fadespeed2;
+  
+  fpos > 0.0001 ? (
+    this.dirty_top = max(this.dirty_top,g_pos);
+    (buf[g_pos] += s*fpos) * fpos2 + s * max(0, monvol - fpos*fpos2);
+  ) : fpos2 > 0.0001 ? (
+    buf[g_pos]*fpos2 + s*monvol;
+  ) : (
+    s*monvol;
+  );
+);
+
+function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
+(
+  rec[st_state] ? (
+    st==0 ? ( 
+      g_active_cnt -= 1; 
+    ) : (
+      g_firstrec = 0;   
+    );
+  ) : (
+    st>0 ? ( 
+      st == 2 && (dt = max(rec[st_dirty], this.dirty_top+1)) > 0 ? (
+        memset(this.buf,0,dt);
+        this.dirty_top=-1;
+        rec[st_dirty]=0;
+      );
+      
+      (g_active_cnt += 1) == 1 ? (
+        st == 2 ? ( 
+          g_pos = 0;
+          g_length = 0; 
+          g_firstrec = 1; 
+        );        
+      );
+    );
+  );
+  rec[st_state] = st;
+  rec[st_dirty] = max(max(rec[st_dirty],this.dirty_top+1),st==2);
+  
+  sk_fpos = st == 2 ? g_fadespeed2 : 0;
+  sk_fpos2 = st > 0 ? g_fadespeed2 : 0;
+);
+
+function onmsg(m1,m2,m3) instance(rec,note) (
+   m2 == note ? (
+     this.setstate((rec[st_state] == 2 && g_firstrec==0) ? 1 : 2);
+     g_monitor = this.idx;
+   ) : m2 == note + 1 ? (
+     this.setstate(rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0);
+     g_monitor = this.idx;
+   );
+);
+
+
+ext_noinit == 0 ? (
+  ext_noinit=1;
+
+  g_inactive_blockcnt=0;
+  
+  g_active_cnt = 0; 
+  g_length = 0;
+  g_pos=0;
+  g_firstrec=0;
+  g_monitor = -1; // monitor this one even when not playing/recording
+
+  ch1.init(0);
+  ch2.init(1);
+  ch3.init(2);
+  ch4.init(3);
+  ch5.init(4);
+  ch6.init(5);
+  ch7.init(6);
+  ch8.init(7);
+);
+
+
+function repeatbuf(buf,osz, nsz) local(p,s)
+(
+  p=buf+osz;
+  while (p < buf+nsz) 
+  (
+    s = min(buf+nsz-p,osz);
+    memcpy(p,buf,s);
+    p+=s;
+  ); 
+);
+
+function xfadebuf(buf, osz, nsz) local(fsz,s,ds)
+(
+  s=0;
+  fsz = min(g_shorten_fadesize,osz-nsz)|0;
+  ds=1/fsz;
+  // fade buf[0..fsz] with buf[nsz..nsz+fsz] 
+  loop(fsz,
+    buf[0] = buf[0] * s + buf[nsz]*(1-s);
+    s+=ds;
+    buf+=1;
+  );
+ 
+);
+
+function adjustsizes(scale) local(nlen,olen,i, lp)
+(
+  olen = g_length;
+  nlen = (olen*scale)|0;
+  nlen >= 1 && nlen < g_maxlen ? (
+    i=0;
+    lp=mem_stlist;
+    loop(g_nchan,
+      lp[st_dirty] ? (
+        nlen > olen ? (
+          repeatbuf(get_chanbuf(i),olen,nlen);
+          nlen > lp[st_dirty] ? lp[st_dirty] = nlen;
+        ) : (
+          xfadebuf(get_chanbuf(i),olen,nlen);
+        );
+      );
+      i+=1;
+      lp += st_num;
+    );
+    g_length = nlen;
+    g_pos %= nlen;
+  );
+);
+
+function reset() local(i,lp)
+( 
+  g_monitor=-1;
+  ch1.setstate(0); ch1.dirty_top=-1; // setstate() will latch dirty_top to st_dirty
+  ch2.setstate(0); ch2.dirty_top=-1;
+  ch3.setstate(0); ch3.dirty_top=-1;
+  ch4.setstate(0); ch4.dirty_top=-1;
+  ch5.setstate(0); ch5.dirty_top=-1;
+  ch6.setstate(0); ch6.dirty_top=-1;
+  ch7.setstate(0); ch7.dirty_top=-1;
+  ch8.setstate(0); ch8.dirty_top=-1;
+  i=0;
+  lp = mem_stlist;
+  loop(g_nchan,
+    lp[st_dirty] > 0 ? (
+      memset(get_chanbuf(i), 0, lp[st_dirty]);
+      lp[st_dirty] = 0;
+    );
+    i+=1;
+    lp += st_num;
+  );
+  g_length=g_pos=0;
+);
+
+@block
+
+g_active_cnt==0? (
+  g_inactive_blockcnt < 2 ? ( 
+    g_inactive_blockcnt+=1; 
+  ) : (
+    g_pos = 0
+  );
+) : g_inactive_blockcnt=0;
+
+sidx=0;
+nextmsg_offs=-1;
+midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);
+
+@sample
+while (sidx == nextmsg_offs)
+(
+  nextmsg_1 == 0x90 && nextmsg_3 != 0  ? (
+    ch1.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch2.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch3.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch4.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch5.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch6.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch7.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+    ch8.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
+  );
+  nextmsg_offs=-1;
+  midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);  
+);
+
+sidx+=1;
+
+spl0=ch1.process(spl0);
+spl1=ch2.process(spl1);
+spl2=ch3.process(spl2);
+spl3=ch4.process(spl3);
+spl4=ch5.process(spl4);
+spl5=ch6.process(spl5);
+spl6=ch7.process(spl6);
+spl7=ch8.process(spl7);
+
+(g_pos += 1) >= g_length ? (
+  g_firstrec ? (
+     g_pos >= g_maxlen ? (
+       g_firstrec=0;
+       g_pos=0;
+     ) : (
+       g_length = g_pos+1;
+     );
+  ) : (
+    g_pos=0;
+  );
+);
+
+@gfx 420 180
+
+function estbpm(len) local(bpm)
+(
+  bpm = 120.0 * srate / len;
+  while (bpm < 60) ( bpm*=2; );
+  while (bpm > 240) ( bpm/=2; );
+  bpm;
+);
+
+function draw_button(xpos,ypos, w, h, bordersz)
+(
+  gfx_rect(xpos,ypos,w,h);
+  bordersz > 0 ? (
+    gfx_set(1,1,1);
+    gfx_rect(xpos,ypos,bordersz,h);
+    gfx_rect(xpos+bordersz,ypos,w-bordersz*2,bordersz);
+    gfx_rect(xpos+w-bordersz,ypos,bordersz,h);
+    gfx_rect(xpos+bordersz,ypos+h-bordersz,w-bordersz*2,bordersz);
+  );
+);
+
+function mouse_in(xpos,ypos,w,h) (
+  mouse_x>=xpos && mouse_x <= xpos+w && 
+    mouse_y>=ypos && mouse_y <= ypos+h;
+);
+
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw)
+(
+  force_redraw = gfx_w != last_w || gfx_h != last_h;
+  
+  gap = 4;
+  w=0|((gfx_w- gap*(g_nchan-1))/g_nchan);
+  h=w;
+  i=0;
+  rec = mem_stlist;
+  loop(8,
+    (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
+       g_monitor=i;
+    );
+    
+    mode = rec[st_state];
+    gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
+    g_monitor == i ? mode|=8;
+    rec[st_dirty] ? mode|=16;
+    
+    force_redraw || rec[st_lastmode] != mode ? (
+      rec[st_lastmode] = mode;
+      draw_button(xpos,ypos,w,h,g_monitor == i ? gap : 0);
+    
+      gfx_set(1,1,1);
+      gfx_x = xpos + 8;
+      gfx_y = ypos + 8;
+      gfx_printf("%d",i+1);
+    
+      rec[st_dirty] ? (
+        gfx_set(0,0.5,0.75);
+        gfx_rect(xpos+gap,ypos+h-h/8-gap,w-gap*2,ceil(h/8));
+        //gfx_set(1);
+        //gfx_x=xpos+gap;
+        //gfx_y=ypos+h-h/8-gap;
+        //gfx_printf("%d mS",rec[st_dirty]/srate * 1000.0);
+      );
+    );
+    
+    xpos += w + gap;
+    i+=1;
+    rec += st_num;
+  );
+  xpos = 0;
+  ypos += h+gap;
+  
+  force_redraw ? (
+    gfx_set(0.5,0,0);
+    draw_button(xpos,ypos,w,h,0);
+    gfx_set(1);
+    gfx_x=xpos+w/2 - 8*4/2;
+    gfx_y=ypos+h/2 - 4;
+    gfx_printf("kill");
+  );
+  
+  !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
+    reset();
+  );
+  xpos += w+gap;
+  
+  force_redraw ? (
+    gfx_set(0,0.5,0.6);
+    draw_button(xpos,ypos,w,h,0);
+    gfx_set(1);
+    gfx_x=xpos+w/2 - 8*5/2;
+    gfx_y=ypos+h/2 - 4;
+    gfx_printf("halve");
+  );
+  
+  !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
+    adjustsizes(0.5);
+  );
+  xpos += w+gap;
+
+
+  gfx_set(0,0.6,0.5);
+  draw_button(xpos,ypos,w,h,0);
+  gfx_set(1);
+  gfx_x=xpos+w/2 - 8*6/2;
+  gfx_y=ypos+h/2 - 4;
+  gfx_printf("double");
+  !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
+    adjustsizes(2.0);
+  );
+  xpos += w+gap;
+  
+  
+);
+
+function draw_position() local(last_pos,last_len)
+(
+  last_w != gfx_w || last_h != gfx_h || last_pos != g_pos || last_len != g_length ? (
+    last_len = g_length;
+    last_pos = g_pos;
+    gfx_set(0.225,0.125,0.125);
+    gfx_rect(0,0,gfx_w,20);
+    gfx_set(0.125,0.25,0.25);
+    gfx_rect(0,0,g_pos/g_length * gfx_w,20);
+    gfx_x=2;
+    gfx_y=2;
+    gfx_set(1,1,1);
+    gfx_printf("%d mS\n%.1f BPM",g_length/srate * 1000,estbpm(last_len));
+  );
+);
+
+last_w != gfx_w || last_h != gfx_h ? (
+ gfx_set(0.125);
+ gfx_rect(0,0,gfx_w,gfx_h);
+);
+
+draw_position();
+draw(0, 30);
+
+last_w = gfx_w;
+last_h = gfx_h;
+last_mouse_cap = mouse_cap;
