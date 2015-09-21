@@ -49,14 +49,19 @@ st_lastmode = 1; // UI flags for mode + monitor + dirty
 // using max(mem_stlist[st_dirty],chX.dirty_top+1)
 st_dirty = 2; 
 
-st_num = 3;
+st_monmode = 3; // mirrors chX.monmode
+
+st_num = 4;
 
 mem_buflist = mem_stlist + g_nchan * st_num;
 
 
 function get_chanbuf(idx) ( mem_buflist + g_maxlen * idx; );
 
-function init(x) instance(idx rec buf monvol fpos fpos2 sk_fpos sk_fpos2 note dirty_top) (
+function init(x) 
+  instance(idx rec buf monvol fpos fpos2 sk_fpos 
+           sk_fpos2 note dirty_top monmode) 
+(
   idx = x;
   rec = mem_stlist + x*st_num;
   buf = get_chanbuf(x);
@@ -66,20 +71,35 @@ function init(x) instance(idx rec buf monvol fpos fpos2 sk_fpos sk_fpos2 note di
   rec[st_state]=0;
   rec[st_lastmode]=-1;
   rec[st_dirty]=0;
+  rec[st_monmode] = monmode = 1;
 );
 
-function process(s) instance(buf, fpos, fpos2, monvol) (
+function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
   fpos = fpos*g_fadespeed + this.sk_fpos;
   fpos2 = fpos2*g_fadespeed + this.sk_fpos2;  
-  monvol = monvol*g_fadespeed + (g_monitor == this.idx)*g_fadespeed2;
   
-  fpos > 0.0001 ? (
-    this.dirty_top = max(this.dirty_top,g_pos);
-    (buf[g_pos] += s*fpos) * fpos2 + s * max(0, monvol - fpos*fpos2);
-  ) : fpos2 > 0.0001 ? (
-    buf[g_pos]*fpos2 + s*monvol;
-  ) : (
-    s*monvol;
+  monmode == 0 ? (
+    // no monitoring
+    fpos > 0.0001 ? (
+      this.dirty_top = max(this.dirty_top,g_pos);
+      r=buf[g_pos]*fpos2;
+      buf[g_pos] += s*fpos;
+      r;
+    ) : fpos2 > 0.0001 ? (
+      buf[g_pos]*fpos2;
+    ) : 0;
+    
+  ) : ( 
+    monvol = monvol*g_fadespeed + (monmode>=2 || g_monitor == this.idx)*g_fadespeed2;
+  
+    fpos > 0.0001 ? (
+      this.dirty_top = max(this.dirty_top,g_pos);
+      (buf[g_pos] += s*fpos) * fpos2 + s * max(0, monvol - fpos*fpos2);
+    ) : fpos2 > 0.0001 ? (
+      buf[g_pos]*fpos2 + s*monvol;
+    ) : (
+      s*monvol;
+    );
   );
 );
 
@@ -197,6 +217,18 @@ function adjustsizes(scale) local(nlen,olen,i, lp)
   );
 );
 
+function updatechfromrec()
+(
+  ch1.monmode = mem_stlist[0*st_num + st_monmode];
+  ch2.monmode = mem_stlist[1*st_num + st_monmode];
+  ch3.monmode = mem_stlist[2*st_num + st_monmode];
+  ch4.monmode = mem_stlist[3*st_num + st_monmode];
+  ch5.monmode = mem_stlist[4*st_num + st_monmode];
+  ch6.monmode = mem_stlist[5*st_num + st_monmode];
+  ch7.monmode = mem_stlist[6*st_num + st_monmode];
+  ch8.monmode = mem_stlist[7*st_num + st_monmode];
+);
+
 function reset() local(i,lp)
 ( 
   g_monitor=-1;
@@ -220,6 +252,19 @@ function reset() local(i,lp)
   );
   g_length=g_pos=0;
 );
+
+@serialize
+function doconf() local(i) (
+  i=0;
+  loop(g_nchan,
+    file_var(0,mem_stlist[st_monmode + i*st_num]);
+    i+=1;
+  );
+  file_avail(0)>=0 ? ( // is reading config
+    updatechfromrec();
+  );
+);
+doconf();
 
 @block
 
@@ -303,7 +348,22 @@ function mouse_in(xpos,ypos,w,h) (
     mouse_y>=ypos && mouse_y <= ypos+h;
 );
 
-function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize)
+function draw_speaker(xpos, ypos, w)
+(
+  xpos -= w*.5;
+  gfx_line(xpos,ypos-w*.35,xpos+w*.4,ypos-w*.35);
+  gfx_line(xpos,ypos-w*.35,xpos,ypos+w*.35);
+  gfx_line(xpos,ypos+w*.35,xpos+w*.4,ypos+w*.35);
+  gfx_line(xpos+w*.4,ypos-w*.35,xpos+w*.4,ypos+w*.35);
+  
+  gfx_line(xpos+w*.4,ypos-w*.35,xpos+w*.8,ypos-w*.7);
+  gfx_line(xpos+w*.4,ypos+w*.35,xpos+w*.8,ypos+w*.7);
+
+  gfx_line(xpos+w*.8,ypos-w*.7,xpos+w*.8,ypos+w*.7);
+  
+);
+
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
@@ -331,7 +391,12 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize)
     gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
     g_monitor == i ? mode|=8;
     rec[st_dirty] ? mode|=16;
+    mode |= rec[st_monmode] << 8;
     
+    mw = (w*.25)|0;
+    mx = xpos + w - mw - gap;
+    my = ypos+gap;
+  
     force_redraw || rec[st_lastmode] != mode ? (
       rec[st_lastmode] = mode;
       draw_button(xpos,ypos,w,h,g_monitor == i ? gap : 0);
@@ -339,16 +404,43 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize)
       gfx_set(1,1,1);
       gfx_x = xpos + 8;
       gfx_y = ypos + 8;
-      gfx_printf("%d",i+1);
+      gfx_printf("%d",i+1);    
+      
+      rec[st_monmode]==0 ? (
+        gfx_set(0.2)
+      ) : rec[st_monmode]==1 ? (
+        (mode&8) ? gfx_set(0.3,0.3,1.0) : gfx_set(0.3,0.3,0.7) 
+      ) : (
+        gfx_set(0,0.8,0);
+      );
+      
+      gfx_rect(mx,my,mw,mw);
+      
+      rec[st_monmode] == 0 ? (
+        gfx_set(0);
+      ) : (
+        rec[st_monmode]==2 || (mode&8) ? (       
+          gfx_set(1,1,1, 1);
+        ) : (
+          gfx_set(1,1,1, .25);
+        );
+      );
+      draw_speaker(mx+mw/2,my+mw/2,mw/2);    
+        
+      rec[st_monmode] == 0 ? (
+        gfx_set(0);
+        gfx_line(mx,my,mx+mw,my+mw);
+        gfx_line(mx+mw,my,mx,my+mw);
+      );
     
       rec[st_dirty] ? (
         gfx_set(0,0.5,0.75);
         gfx_rect(xpos+gap,ypos+h-h/8-gap,w-gap*2,ceil(h/8));
-        //gfx_set(1);
-        //gfx_x=xpos+gap;
-        //gfx_y=ypos+h-h/8-gap;
-        //gfx_printf("%d mS",rec[st_dirty]/srate * 1000.0);
       );
+    );
+    (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my,mw,mw) ? (
+      rec[st_monmode] = (rec[st_monmode]+1)%3;
+      updatechfromrec();
     );
     
     xpos += w + gap;
