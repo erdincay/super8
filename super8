@@ -407,7 +407,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       ) : rec[st_monmode]==1 ? (
         (mode&8) ? gfx_set(0.3,0.3,1.0) : gfx_set(0.3,0.3,0.7) 
       ) : (
-        gfx_set(0,0.8,0);
+        gfx_set(0.9,0.8,0);
       );
       
       gfx_rect(mx,my,mw,mw);
