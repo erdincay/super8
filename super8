@@ -20,6 +20,7 @@ out_pin:output 5
 out_pin:output 6
 out_pin:output 7
 out_pin:output 8
+out_pin:monitor output
 
 @init
 
@@ -307,6 +308,7 @@ spl4=ch5.process(spl4);
 spl5=ch6.process(spl5);
 spl6=ch7.process(spl6);
 spl7=ch8.process(spl7);
+spl8=spl(g_monitor);
 
 (g_pos += 1) >= g_length ? (
   g_firstrec ? (
