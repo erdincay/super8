@@ -242,14 +242,14 @@ ext_noinit == 0 ? (
   memset(mem_notelist_gen,128,3);
   mem_stlist = alloc(g_nchan * st_num);
 
-  g_inactive_blockcnt=0;
-  
+  g_inactive_blockcnt=0;  
   g_active_cnt = 0; 
   g_length = 0;
   g_pos=0;
   g_firstrec=0;
   g_monitor = -1; // monitor this one even when not playing/recording
-
+  g_lastmsg = -1;
+  
   ch1.init(0, 36,37, 128);
   ch2.init(1, 38,39, 128);
   ch3.init(2, 41,42, 128);
@@ -323,6 +323,7 @@ while (sidx == nextmsg_offs)
     nextmsg_2 == mem_notelist_gen[1] ? adjustsizes(0.5) :
       nextmsg_2 == mem_notelist_gen[2] ? adjustsizes(2) :
       nextmsg_2 == mem_notelist_gen[0] ? reset();
+    g_lastmsg = nextmsg_2;
   );
   nextmsg_offs=-1;
   midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);  
@@ -593,6 +594,16 @@ last_w != gfx_w || last_h != gfx_h ? (
 
 draw_position();
 draw(0, 30);
+
+g_lastmsg>=0 ? (
+  gfx_x=gfx_w-24;
+  gfx_y=gfx_h-8;
+  gfx_set(0);
+  gfx_rect(gfx_x,gfx_y,24,8);
+  gfx_set(.3);
+  gfx_x += g_lastmsg<10?16:g_lastmsg<100?8;
+  gfx_printf("%d",g_lastmsg);
+);
 
 last_w = gfx_w;
 last_h = gfx_h;
