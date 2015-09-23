@@ -26,7 +26,8 @@ out_pin:monitor output
 
 // constants
 g_nchan = 8;
-g_maxlen = 882000; // 20s at 44khz
+g_max_alloc = 8<<20; // JSFX memory available
+g_maxlen = ((g_max_alloc-4096)/g_nchan)|0; // use nearly all of available memory
 g_fadespeed = 0.99;
 g_fadespeed2 = 1.0-g_fadespeed;
 g_shorten_fadesize=0.005*srate; // fade to use when shortening a loop
