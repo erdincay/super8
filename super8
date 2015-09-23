@@ -365,7 +365,7 @@ spl4=ch5.process(spl4);
 spl5=ch6.process(spl5);
 spl6=ch7.process(spl6);
 spl7=ch8.process(spl7);
-spl8=spl(g_chan_selected);
+spl8=g_chan_selected >= 0 ? spl(g_chan_selected);
 
 (g_pos += 1) >= g_length ? (
   g_firstrec ? (
