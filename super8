@@ -24,18 +24,12 @@ out_pin:monitor output
 
 @init
 
-gfx_clear=-1;
 g_nchan = 8;
 g_maxlen = 882000; // 20s at 44khz
 g_fadespeed = 0.99;
 g_fadespeed2 = 1.0-g_fadespeed;
 g_shorten_fadesize=0.005*srate; // fade to use when shortening a loop
 
-mem_notelist_gen = 0;
-mem_notelist_gen[0] = mem_notelist_gen[1] = mem_notelist_gen[2] = 128; // kill/halve/double
-mem_notelist_gen_sz = 3;
-
-mem_stlist = mem_notelist_gen + mem_notelist_gen_sz;
 st_state = 0; // 0=off, 1=play, 2=recording
 st_lastmode = 1; // UI flags for mode + monitor + dirty
 
@@ -51,8 +45,15 @@ st_note3 = 6;
 
 st_num = 7;
 
-mem_buflist = mem_stlist + g_nchan * st_num;
 
+function alloc(sz) ( (this.top+=sz)-sz; );
+alloc.top=0;
+
+mem_notelist_gen = alloc(mem_notelist_gen_sz = 3);
+memset(mem_notelist_gen,128,3);
+
+mem_stlist = alloc(g_nchan * st_num);
+mem_buflist = alloc(g_nchan * g_maxlen);
 
 function get_chanbuf(idx) ( mem_buflist + g_maxlen * idx; );
 
@@ -354,6 +355,8 @@ spl8=spl(g_monitor);
 );
 
 @gfx 420 180
+
+gfx_clear=-1;
 
 function estbpm(len) local(bpm)
 (
