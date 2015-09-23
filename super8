@@ -24,38 +24,28 @@ out_pin:monitor output
 
 @init
 
+// constants
 g_nchan = 8;
 g_maxlen = 882000; // 20s at 44khz
 g_fadespeed = 0.99;
 g_fadespeed2 = 1.0-g_fadespeed;
 g_shorten_fadesize=0.005*srate; // fade to use when shortening a loop
 
-st_state = 0; // 0=off, 1=play, 2=recording
-st_lastmode = 1; // UI flags for mode + monitor + dirty
+// per-channel state/configuration record (mem_stlist)
+st_monmode = 0; // mirrors chX.monmode
+st_note1 = 1; // mirrors chX.note/chX.note2/chX.note3
+st_note2 = 2;
+st_note3 = 3;
 
-// set if buffer is dirty, and also may indicate how much of it is 
-// using max(mem_stlist[st_dirty],chX.dirty_top+1)
-st_dirty = 2; 
-
-st_monmode = 3; // mirrors chX.monmode
-
-st_note1 = 4; // mirrors chX.note/chX.note2/chX.note3
-st_note2 = 5;
-st_note3 = 6;
-
-st_num = 7;
+st_state = 4; // 0=off, 1=play, 2=recording
+st_buf   = 5; // pointer to audio buffer
+st_dirty = 6;  // set if buffer is dirty, and also may indicate how much of it 
+               // is using max(mem_stlist[st_dirty],chX.dirty_top+1)
+st_lastmode = 7; // UI flags for mode + monitor + dirty
+st_num = 8;
 
 
 function alloc(sz) ( (this.top+=sz)-sz; );
-alloc.top=0;
-
-mem_notelist_gen = alloc(mem_notelist_gen_sz = 3);
-memset(mem_notelist_gen,128,3);
-
-mem_stlist = alloc(g_nchan * st_num);
-mem_buflist = alloc(g_nchan * g_maxlen);
-
-function get_chanbuf(idx) ( mem_buflist + g_maxlen * idx; );
 
 function updatefromrec() instance(rec)
 (
@@ -68,11 +58,12 @@ function updatefromrec() instance(rec)
 function init(x, n1,n2,n3) 
   instance(idx rec buf monvol fpos fpos2 sk_fpos sk_fpos2 dirty_top) 
 (
-  idx = x;
-  rec = mem_stlist + x*st_num;
-  buf = get_chanbuf(x); 
+  idx = x;  
   monvol = fpos = fpos2 = sk_fpos = sk_fpos2 = 0;
   dirty_top = -1;
+  buf = alloc(g_maxlen);
+  
+  rec = mem_stlist + x*st_num;
   rec[st_note1] = n1;
   rec[st_note2] = n2;
   rec[st_note3] = n3;
@@ -80,6 +71,8 @@ function init(x, n1,n2,n3)
   rec[st_lastmode]=-1;
   rec[st_dirty]=0;
   rec[st_monmode] = 1;
+  rec[st_buf] = buf;
+  
   this.updatefromrec();
 );
 
@@ -156,29 +149,6 @@ function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
    );
 );
 
-
-ext_noinit == 0 ? (
-  ext_noinit=1;
-
-  g_inactive_blockcnt=0;
-  
-  g_active_cnt = 0; 
-  g_length = 0;
-  g_pos=0;
-  g_firstrec=0;
-  g_monitor = -1; // monitor this one even when not playing/recording
-
-  ch1.init(0, 36,37, 128);
-  ch2.init(1, 38,39, 128);
-  ch3.init(2, 41,42, 128);
-  ch4.init(3, 43,44, 128);
-  ch5.init(4, 45,46, 128);
-  ch6.init(5, 48,49, 128);
-  ch7.init(6, 50,51, 128);
-  ch8.init(7, 53,54, 128);
-);
-
-
 function repeatbuf(buf,osz, nsz) local(p,s)
 (
   p=buf+osz;
@@ -204,23 +174,21 @@ function xfadebuf(buf, osz, nsz) local(fsz,s,ds)
  
 );
 
-function adjustsizes(scale) local(nlen,olen,i, lp)
+function adjustsizes(scale) local(nlen,olen, lp)
 (
   olen = g_length;
   nlen = (olen*scale)|0;
   nlen >= 1 && nlen < g_maxlen ? (
-    i=0;
     lp=mem_stlist;
     loop(g_nchan,
       lp[st_dirty] ? (
         nlen > olen ? (
-          repeatbuf(get_chanbuf(i),olen,nlen);
+          repeatbuf(lp[st_buf],olen,nlen);
           nlen > lp[st_dirty] ? lp[st_dirty] = nlen;
         ) : (
-          xfadebuf(get_chanbuf(i),olen,nlen);
+          xfadebuf(lp[st_buf],olen,nlen);
         );
       );
-      i+=1;
       lp += st_num;
     );
     g_length = nlen;
@@ -255,7 +223,7 @@ function reset() local(i,lp)
   lp = mem_stlist;
   loop(g_nchan,
     lp[st_dirty] > 0 ? (
-      memset(get_chanbuf(i), 0, lp[st_dirty]);
+      memset(lp[st_buf], 0, lp[st_dirty]);
       lp[st_dirty] = 0;
     );
     i+=1;
@@ -263,6 +231,37 @@ function reset() local(i,lp)
   );
   g_length=g_pos=0;
 );
+
+
+// one-time initialization
+ext_noinit == 0 ? (
+  ext_noinit=1;
+  
+  alloc.top=0;
+  mem_notelist_gen = alloc(mem_notelist_gen_sz = 3);
+  memset(mem_notelist_gen,128,3);
+  mem_stlist = alloc(g_nchan * st_num);
+
+  g_inactive_blockcnt=0;
+  
+  g_active_cnt = 0; 
+  g_length = 0;
+  g_pos=0;
+  g_firstrec=0;
+  g_monitor = -1; // monitor this one even when not playing/recording
+
+  ch1.init(0, 36,37, 128);
+  ch2.init(1, 38,39, 128);
+  ch3.init(2, 41,42, 128);
+  ch4.init(3, 43,44, 128);
+  ch5.init(4, 45,46, 128);
+  ch6.init(5, 48,49, 128);
+  ch7.init(6, 50,51, 128);
+  ch8.init(7, 53,54, 128);
+);
+
+
+
 
 @serialize
 function doconf() local(i,s) (
