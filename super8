@@ -151,7 +151,7 @@ function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
      this.setstate(rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0);
      g_monitor = this.idx;
    ) : m2 == note3 ? (
-     g_monitor = this.idx;
+     g_monitor = (g_monitor == this.idx) ? -1 : this.idx;
    );
 );
 
