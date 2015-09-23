@@ -31,21 +31,11 @@ g_fadespeed = 0.99;
 g_fadespeed2 = 1.0-g_fadespeed;
 g_shorten_fadesize=0.005*srate; // fade to use when shortening a loop
 
+mem_notelist_gen = 0;
+mem_notelist_gen[0] = mem_notelist_gen[1] = mem_notelist_gen[2] = 128; // kill/halve/double
+mem_notelist_gen_sz = 3;
 
-mem_notelist = 3;
-mem_notelist[-3] = 64; // reset
-mem_notelist[-2] = 61; // double
-mem_notelist[-1] = 60; // half
-mem_notelist[0] = 36;
-mem_notelist[1] = 38;
-mem_notelist[2] = 41;
-mem_notelist[3] = 43;
-mem_notelist[4] = 45;
-mem_notelist[5] = 48;
-mem_notelist[6] = 50;
-mem_notelist[7] = 53;
-
-mem_stlist = mem_notelist + g_nchan;
+mem_stlist = mem_notelist_gen + mem_notelist_gen_sz;
 st_state = 0; // 0=off, 1=play, 2=recording
 st_lastmode = 1; // UI flags for mode + monitor + dirty
 
@@ -55,27 +45,41 @@ st_dirty = 2;
 
 st_monmode = 3; // mirrors chX.monmode
 
-st_num = 4;
+st_note1 = 4; // mirrors chX.note/chX.note2/chX.note3
+st_note2 = 5;
+st_note3 = 6;
+
+st_num = 7;
 
 mem_buflist = mem_stlist + g_nchan * st_num;
 
 
 function get_chanbuf(idx) ( mem_buflist + g_maxlen * idx; );
 
-function init(x) 
-  instance(idx rec buf monvol fpos fpos2 sk_fpos 
-           sk_fpos2 note dirty_top monmode) 
+function updatefromrec() instance(rec)
+(
+  this.note  = rec[st_note1];
+  this.note2 = rec[st_note2];
+  this.note3 = rec[st_note3];
+  this.monmode = rec[st_monmode];
+);
+
+function init(x, n1,n2,n3) 
+  instance(idx rec buf monvol fpos fpos2 sk_fpos sk_fpos2 dirty_top) 
 (
   idx = x;
   rec = mem_stlist + x*st_num;
-  buf = get_chanbuf(x);
-  note = mem_notelist[x];
+  buf = get_chanbuf(x); 
   monvol = fpos = fpos2 = sk_fpos = sk_fpos2 = 0;
   dirty_top = -1;
+  rec[st_note1] = n1;
+  rec[st_note2] = n2;
+  rec[st_note3] = n3;
   rec[st_state]=0;
   rec[st_lastmode]=-1;
   rec[st_dirty]=0;
-  rec[st_monmode] = monmode = 1;
+  rec[st_monmode] = 1;
+  this.updatefromrec();
 );
 
 function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
@@ -139,12 +143,14 @@ function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
   sk_fpos2 = st > 0 ? g_fadespeed2 : 0;
 );
 
-function onmsg(m1,m2,m3) instance(rec,note) (
+function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
    m2 == note ? (
      this.setstate((rec[st_state] == 2 && g_firstrec==0) ? 1 : 2);
      g_monitor = this.idx;
-   ) : m2 == note + 1 ? (
+   ) : m2 == note2 ? (
      this.setstate(rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0);
+     g_monitor = this.idx;
+   ) : m2 == note3 ? (
      g_monitor = this.idx;
    );
 );
@@ -161,14 +167,14 @@ ext_noinit == 0 ? (
   g_firstrec=0;
   g_monitor = -1; // monitor this one even when not playing/recording
 
-  ch1.init(0);
-  ch2.init(1);
-  ch3.init(2);
-  ch4.init(3);
-  ch5.init(4);
-  ch6.init(5);
-  ch7.init(6);
-  ch8.init(7);
+  ch1.init(0, 36,37, 128);
+  ch2.init(1, 38,39, 128);
+  ch3.init(2, 41,42, 128);
+  ch4.init(3, 43,44, 128);
+  ch5.init(4, 45,46, 128);
+  ch6.init(5, 48,49, 128);
+  ch7.init(6, 50,51, 128);
+  ch8.init(7, 53,54, 128);
 );
 
 
@@ -223,14 +229,14 @@ function adjustsizes(scale) local(nlen,olen,i, lp)
 
 function updatechfromrec()
 (
-  ch1.monmode = mem_stlist[0*st_num + st_monmode];
-  ch2.monmode = mem_stlist[1*st_num + st_monmode];
-  ch3.monmode = mem_stlist[2*st_num + st_monmode];
-  ch4.monmode = mem_stlist[3*st_num + st_monmode];
-  ch5.monmode = mem_stlist[4*st_num + st_monmode];
-  ch6.monmode = mem_stlist[5*st_num + st_monmode];
-  ch7.monmode = mem_stlist[6*st_num + st_monmode];
-  ch8.monmode = mem_stlist[7*st_num + st_monmode];
+  ch1.updatefromrec();
+  ch2.updatefromrec();
+  ch3.updatefromrec();
+  ch4.updatefromrec();
+  ch5.updatefromrec();
+  ch6.updatefromrec();
+  ch7.updatefromrec();
+  ch8.updatefromrec();
 );
 
 function reset() local(i,lp)
@@ -258,12 +264,30 @@ function reset() local(i,lp)
 );
 
 @serialize
-function doconf() local(i) (
-  i=0;
+function doconf() local(i,s) (
+  i=mem_stlist;
   loop(g_nchan,
-    file_var(0,mem_stlist[st_monmode + i*st_num]);
+    file_var(0,i[st_monmode]);
+    i+=st_num;
+  );
+  
+  s=mem_notelist_gen_sz; // safe to increase mem_notelist_gen_sz without breaking compat
+  file_var(0,s);
+
+  i=0;
+  loop(s,
+    file_var(0,i < mem_notelist_gen_sz ? mem_notelist_gen[i] : 0);
     i+=1;
   );
+  
+  i = mem_stlist;
+  loop(g_nchan,
+    file_var(0,i[st_note1]);
+    file_var(0,i[st_note2]);
+    file_var(0,i[st_note3]);
+    i+=st_num;
+  );
+  
   file_avail(0)>=0 ? ( // is reading config
     updatechfromrec();
   );
@@ -296,9 +320,9 @@ while (sidx == nextmsg_offs)
     ch6.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     ch7.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     ch8.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
-    nextmsg_2 == mem_notelist[-1] ? adjustsizes(0.5) :
-      nextmsg_2 == mem_notelist[-2] ? adjustsizes(2) :
-      nextmsg_2 == mem_notelist[-3] ? reset();
+    nextmsg_2 == mem_notelist_gen[1] ? adjustsizes(0.5) :
+      nextmsg_2 == mem_notelist_gen[2] ? adjustsizes(2) :
+      nextmsg_2 == mem_notelist_gen[0] ? reset();
   );
   nextmsg_offs=-1;
   midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);  
@@ -371,16 +395,39 @@ function draw_speaker(xpos, ypos, w)
   
 );
 
-function draw_button_midinote(xpos,ypos,w,h,gap,i) 
+function draw_button_midinote(xpos,ypos,midimem,draw) local(cap capy t)
 (          
-  gfx_x=xpos + w - gap - (mem_notelist[i]>=100?24:16);
-  gfx_y=ypos + h - gap - 8;
-  gfx_set(0.5);
-  gfx_printf("%d",mem_notelist[i]);
+  cap == midimem ? (
+    (mouse_cap&2) ? (
+      t = ((mouse_y-capy)*0.25)|0;
+      t ? (
+        midimem[0] = min(max(midimem[0]-t,0),128);
+        updatechfromrec();
+        capy=mouse_y;
+        draw=1;
+      );
+    ) : (
+      cap = -1;
+    );
+  );
+  cap == -1 && (mouse_cap & 2) && mouse_x >= xpos && mouse_x < xpos+24 && 
+                                  mouse_y >= ypos && mouse_y < ypos+24 ? (
+    cap = midimem;
+    capy = mouse_y;
+  );
+  draw ? (
+    t=midimem[0];
+    gfx_set(.35);
+    gfx_rect(xpos,ypos,24,24);
+    gfx_x=xpos + (t>=100?0:t>=10?5:9);
+    gfx_y=ypos + 8;;
+    gfx_set(0.1);
+    gfx_printf(t > 127 ? "OFF" : "%d",t);
+  );
 );
 
 
-function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw)
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
@@ -451,7 +498,15 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
         gfx_rect(xpos+gap,ypos+h-h/8-gap,w-gap*2,ceil(h/8));
       );
       
-      draw_button_midinote(xpos,ypos,w,h,gap,i);
+      t = mem_stlist + i*st_num;
+      draw_button_midinote(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1);
+      draw_button_midinote(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1);
+      draw_button_midinote(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,1);
+    ) : (
+      t = mem_stlist + i*st_num;
+      draw_button_midinote(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,0);
+      draw_button_midinote(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,0);
+      draw_button_midinote(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,0);
     );
     (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my,mw,mw) ? (
       rec[st_monmode] = (rec[st_monmode]+1)%3;
@@ -472,8 +527,8 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     gfx_x=xpos+w/2 - 8*4/2;
     gfx_y=ypos+h/2 - 4;
     gfx_printf("kill");
-    draw_button_midinote(xpos,ypos,w,h,gap,-3);
   );
+  draw_button_midinote(xpos+w-24-gap,ypos+h-24-gap,mem_notelist_gen + 0,force_redraw);
   
   !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
     reset();
@@ -487,8 +542,8 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     gfx_x=xpos+w/2 - 8*5/2;
     gfx_y=ypos+h/2 - 4;
     gfx_printf("halve");
-    draw_button_midinote(xpos,ypos,w,h,gap,-1) 
   );
+  draw_button_midinote(xpos+w-24-gap,ypos+h-24-gap,mem_notelist_gen + 1,force_redraw);
   
   !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
     adjustsizes(0.5);
@@ -502,8 +557,9 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     gfx_x=xpos+w/2 - 8*6/2;
     gfx_y=ypos+h/2 - 4;
     gfx_printf("double");
-    draw_button_midinote(xpos,ypos,w,h,gap,-2) 
   );
+  draw_button_midinote(xpos+w-24-gap,ypos+h-24-gap,mem_notelist_gen + 2,force_redraw);
+  
   !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
     adjustsizes(2.0);
   );
