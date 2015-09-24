@@ -30,6 +30,8 @@ g_max_alloc = 8<<20; // JSFX memory available
 g_maxlen = ((g_max_alloc-4096)/g_nchan)|0; // use nearly all of available memory
 g_fadespeed = 0.99;
 g_fadespeed2 = 1.0-g_fadespeed;
+g_infthreshdb = -120;
+g_infthresh = 10^(g_infthreshdb/20);
 
 
 // fade to use when shortening a loop (probably should make 
@@ -117,6 +119,7 @@ function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
       g_active_cnt -= 1; 
     ) : (
       g_firstrec = 0;   
+      g_recstart_gate = 0;
     );
   ) : (
     st>0 ? ( 
@@ -128,6 +131,7 @@ function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
       
       (g_active_cnt += 1) == 1 ? (
         st == 2 ? ( 
+          g_recstart_gate = mem_gen_cfg[4] > g_infthreshdb ? ( 10^(mem_gen_cfg[4]/20) );
           g_pos = 0;
           g_length = 0; 
           g_firstrec = 1; 
@@ -252,15 +256,17 @@ ext_noinit == 0 ? (
   
   alloc.top=0;
   
-  mem_gen_sz=4;
-  mem_gen_notes = alloc(mem_gen_sz);
-  memset(mem_gen_notes,128,mem_gen_sz);
+  mem_gen_sz=5;
+  mem_gen_cfg = alloc(mem_gen_sz);
+  memset(mem_gen_cfg,128,mem_gen_sz);
+  mem_gen_cfg[4]=g_infthreshdb;
   
   mem_gen_names = alloc(mem_gen_sz);
   mem_gen_names[0] = "kill";
   mem_gen_names[1] = "halve";
   mem_gen_names[2] = "double";
   mem_gen_names[3] = "double\nno rep";
+  mem_gen_names[4] = "init rec\nstart gate";
   
   
   mem_stlist = alloc(g_nchan * st_num);
@@ -270,6 +276,7 @@ ext_noinit == 0 ? (
   g_length = 0;
   g_pos=0;
   g_firstrec=0;
+  g_recstart_gate=0;
   g_chan_selected = -1; // currently selected channel
   g_lastmsg = -1;
   
@@ -299,7 +306,7 @@ function doconf() local(i,s) (
 
   i=0;
   loop(s,
-    file_var(0,i < mem_gen_sz ? mem_gen_notes[i] : 0);
+    file_var(0,i < mem_gen_sz ? mem_gen_cfg[i] : 0);
     i+=1;
   );
   
@@ -344,10 +351,10 @@ while (sidx == nextmsg_offs)
     ch7.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     ch8.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     
-    nextmsg_2 == mem_gen_notes[0] ? gen_action(0) :
-      nextmsg_2 == mem_gen_notes[1] ? gen_action(1) :
-      nextmsg_2 == mem_gen_notes[2] ? gen_action(2) :
-      nextmsg_2 == mem_gen_notes[3] ? gen_action(3);
+    nextmsg_2 == mem_gen_cfg[0] ? gen_action(0) :
+      nextmsg_2 == mem_gen_cfg[1] ? gen_action(1) :
+      nextmsg_2 == mem_gen_cfg[2] ? gen_action(2) :
+      nextmsg_2 == mem_gen_cfg[3] ? gen_action(3);
       
     g_lastmsg = nextmsg_2;
   );
@@ -357,35 +364,43 @@ while (sidx == nextmsg_offs)
 
 sidx+=1;
 g_chan_selected >= 0 ? (
-  g_peakvol = max(abs(spl(g_chan_selected)),g_peakvol);
+  g_chan_peak = abs(spl(g_chan_selected));
+  g_peakvol = max(g_chan_peak,g_peakvol);
+  
+  g_recstart_gate && g_firstrec ? (
+    g_chan_peak >= g_recstart_gate ? g_recstart_gate=0;
+  );
 );
-spl0=ch1.process(spl0);
-spl1=ch2.process(spl1);
-spl2=ch3.process(spl2);
-spl3=ch4.process(spl3);
-spl4=ch5.process(spl4);
-spl5=ch6.process(spl5);
-spl6=ch7.process(spl6);
-spl7=ch8.process(spl7);
+
+g_recstart_gate==0 ? (
+  spl0=ch1.process(spl0);
+  spl1=ch2.process(spl1);
+  spl2=ch3.process(spl2);
+  spl3=ch4.process(spl3);
+  spl4=ch5.process(spl4);
+  spl5=ch6.process(spl5);
+  spl6=ch7.process(spl6);
+  spl7=ch8.process(spl7);
+  
+  (g_pos += 1) >= g_length ? (
+    g_firstrec ? (
+       g_pos >= g_maxlen ? (
+         g_firstrec=0;
+         g_pos=0;
+       ) : (
+         g_length = g_pos+1;
+       );
+    ) : (
+      g_pos=0;
+    );
+  );
+);
+
 g_chan_selected >= 0 ? (
   spl8= spl(g_chan_selected);
 ) : (
   spl8=0;
 );
-
-(g_pos += 1) >= g_length ? (
-  g_firstrec ? (
-     g_pos >= g_maxlen ? (
-       g_firstrec=0;
-       g_pos=0;
-     ) : (
-       g_length = g_pos+1;
-     );
-  ) : (
-    g_pos=0;
-  );
-);
-
 @gfx 420 180
 
 gfx_clear=-1;
@@ -430,13 +445,18 @@ function draw_speaker(xpos, ypos, w)
   
 );
 
-function draw_button_midinote(xpos,ypos,midimem,draw) local(cap capy t)
+function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t w)
 (          
+  w = tweakmode == 1 ? 56 : 24;
   cap == midimem ? (
     (mouse_cap&2) ? (
-      t = ((mouse_y-capy)*0.25)|0;
+      t = ((mouse_y-capy)*.25)|0;
       t ? (
-        midimem[0] = min(max(midimem[0]-t,0),128);
+        tweakmode==1 ? (
+          midimem[0] = min(max(midimem[0]-t,g_infthreshdb),-1);
+        ) : (
+          midimem[0] = min(max(midimem[0]-t,0),128);
+        );
         updatechfromrec();
         capy=mouse_y;
         draw=1;
@@ -445,7 +465,7 @@ function draw_button_midinote(xpos,ypos,midimem,draw) local(cap capy t)
       cap = -1;
     );
   );
-  cap == -1 && (mouse_cap & 2) && mouse_x >= xpos && mouse_x < xpos+24 && 
+  cap == -1 && (mouse_cap & 2) && mouse_x >= xpos && mouse_x < xpos+w && 
                                   mouse_y >= ypos && mouse_y < ypos+24 ? (
     cap = midimem;
     capy = mouse_y;
@@ -453,11 +473,17 @@ function draw_button_midinote(xpos,ypos,midimem,draw) local(cap capy t)
   draw ? (
     t=midimem[0];
     gfx_set(.35);
-    gfx_rect(xpos,ypos,24,24);
-    gfx_x=xpos + (t>=100?0:t>=10?5:9);
+    gfx_rect(xpos,ypos,w,24);
     gfx_y=ypos + 8;;
     gfx_set(0.1);
-    gfx_printf(t > 127 ? "OFF" : "%d",t);
+    tweakmode == 1 ? (
+      gfx_x=xpos+4;
+      t <= g_infthreshdb ? gfx_drawstr("-inf") : gfx_printf("%.0fdB",t);
+    ) :
+    (
+      gfx_x=xpos + (t>=100?0:t>=10?5:9);
+      gfx_printf(t > 127 ? "OFF" : "%d",t);
+    );
   );
 );
 
@@ -533,14 +559,14 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       );
       
       t = mem_stlist + i*st_num;
-      draw_button_midinote(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1);
-      draw_button_midinote(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1);
-      draw_button_midinote(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,1);
+      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1, 0);
+      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1, 0);
+      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,1, 0);
     ) : (
       t = mem_stlist + i*st_num;
-      draw_button_midinote(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,0);
-      draw_button_midinote(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,0);
-      draw_button_midinote(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,0);
+      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,0, 0);
+      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,0, 0);
+      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,0, 0);
     );
     (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my,mw,mw) ? (
       rec[st_monmode] = (rec[st_monmode]+1)%3;
@@ -565,15 +591,16 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       i == 1 ? gfx_set(0.0, 0.5, 0.6) :
       i == 2 ? gfx_set(0.0, 0.6, 0.5) : 
       i == 3 ? gfx_set(0.0, 0.6, 0.4) : 
+      i == 4 ? gfx_set(0.3, 0.3, 0.6) :
                gfx_set(0.5, 0.0, 0.0);
         
       draw_button(xpos,ypos,w,h,0);
       gfx_set(1);
-      gfx_x=xpos+w/2 - 8*min(6,strlen(mem_gen_names[i]))/2;
+      gfx_x=xpos+w/2 - 8*strlen(mem_gen_names[i])*(match("+\n+",mem_gen_names[i])?0.25:0.5);
       gfx_y=ypos+h/2 - 4;
       gfx_drawstr(mem_gen_names[i]);
     );
-    draw_button_midinote(xpos+w-24-gap,ypos+h-24-gap,mem_gen_notes + i,force_redraw);
+    draw_value_tweaker(xpos+w-(i==4?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,force_redraw, i==4);
     
     !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
       gen_action(i);
@@ -615,7 +642,7 @@ gfx_y=gfx_h-8;
 gfx_set(0);
 gfx_rect(gfx_x,gfx_y,6*8,8);
 gfx_set(.3);
-g_peakvol < 0.000001 ? (
+g_peakvol < g_infthresh ? (
   gfx_printf("-inf");
 ) : (
   gfx_printf("%.0fdB",log10(g_peakvol)*20);
