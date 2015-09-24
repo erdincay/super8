@@ -356,7 +356,9 @@ while (sidx == nextmsg_offs)
 );
 
 sidx+=1;
-
+g_chan_selected >= 0 ? (
+  g_peakvol = max(abs(spl(g_chan_selected)),g_peakvol);
+);
 spl0=ch1.process(spl0);
 spl1=ch2.process(spl1);
 spl2=ch3.process(spl2);
@@ -365,7 +367,11 @@ spl4=ch5.process(spl4);
 spl5=ch6.process(spl5);
 spl6=ch7.process(spl6);
 spl7=ch8.process(spl7);
-spl8=g_chan_selected >= 0 ? spl(g_chan_selected);
+g_chan_selected >= 0 ? (
+  spl8= spl(g_chan_selected);
+) : (
+  spl8=0;
+);
 
 (g_pos += 1) >= g_length ? (
   g_firstrec ? (
@@ -603,6 +609,19 @@ last_w != gfx_w || last_h != gfx_h ? (
 
 draw_position();
 draw(0, 30);
+
+gfx_x=0;
+gfx_y=gfx_h-8;
+gfx_set(0);
+gfx_rect(gfx_x,gfx_y,6*8,8);
+gfx_set(.3);
+g_peakvol < 0.000001 ? (
+  gfx_printf("-inf");
+) : (
+  gfx_printf("%.0fdB",log10(g_peakvol)*20);
+  g_peakvol *= 0.93;
+);
+
 
 g_lastmsg>=0 && g_lastmsg_draw!=g_lastmsg ? (
   gfx_x=gfx_w-24;
