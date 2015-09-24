@@ -251,11 +251,12 @@ ext_noinit == 0 ? (
   
   alloc.top=0;
   
-  mem_gen_sz=6;
+  mem_gen_sz=7;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
   mem_gen_cfg[4]=g_infthreshdb; // gate threshold
-  mem_gen_cfg[5]= 5; // msec fade when using halve
+  mem_gen_cfg[5]=5; // msec fade when using halve
+  mem_gen_cfg[6]=0;
   
   mem_gen_names = alloc(mem_gen_sz);
   mem_gen_names[0] = "kill";
@@ -264,6 +265,7 @@ ext_noinit == 0 ? (
   mem_gen_names[3] = "double\nno rep";
   mem_gen_names[4] = "init rec\nstart gate";
   mem_gen_names[5] = "halve\nfadesz";  
+  mem_gen_names[6] = "length\ntweak";  
   
   mem_stlist = alloc(g_nchan * st_num);
 
@@ -441,17 +443,26 @@ function draw_speaker(xpos, ypos, w)
   
 );
 
-function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t w)
+function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein) local(cap capy t w)
 (          
-  w = tweakmode == 1 || tweakmode==2 ? 56 : 24;
+  w = tweakmode > 0 ? 56 : 24;
   cap == midimem ? (
     (mouse_cap&2) ? (
-      t = ((mouse_y-capy)*.25)|0;
+      t = ((mouse_y-capy)*(tweakmode==3 ? 1 : .25))|0;
       t ? (
         tweakmode==1 ? (
           midimem[0] = min(max(midimem[0]-t,g_infthreshdb),-1);
         ) : tweakmode == 2 ? (
           midimem[0] = min(max(midimem[0]-t,0),500);
+        ) : tweakmode == 3 ? (
+          midimem == mem_gen_cfg+6 && g_length > 0 && !g_firstrec ? (
+            midimem[0] -= t;
+            t = (t*0.001*srate)|0;
+            t ? (
+              g_length = max(g_length-t,1);
+              g_pos %= g_length;
+            );                   
+          );
         ) : (
           midimem[0] = min(max(midimem[0]-t,0),128);
         );
@@ -463,9 +474,9 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t 
       cap = -1;
     );
   );
-  cap == -1 && (mouse_cap & 2) && mouse_x >= xpos && mouse_x < xpos+w && 
-                                  mouse_y >= ypos && mouse_y < ypos+24 ? (
+  cap == -1 && (mouse_cap & 2) && (forcemousein||mouse_in(xpos,ypos,w,24)) ? (
     cap = midimem;
+    tweakmode == 3 ? midimem[0]=0;
     capy = mouse_y;
   );
   draw ? (
@@ -477,9 +488,12 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t 
     tweakmode == 1 ? (
       gfx_x=xpos+4;
       t <= g_infthreshdb ? gfx_drawstr("-inf") : gfx_printf("%.0fdB",t);
-    ) : tweakmode == 2 ?(
+    ) : tweakmode == 2 ? (
       gfx_x=xpos+4;
       gfx_printf("%.0f ms",t);    
+    ) : tweakmode == 3 ? (
+      gfx_x=xpos+4;
+      gfx_printf("%+.0f ms",t);    
     ) : (
       gfx_x=xpos + (t>=100?0:t>=10?5:9);
       gfx_printf(t > 127 ? "OFF" : "%d",t);
@@ -559,14 +573,14 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       );
       
       t = mem_stlist + i*st_num;
-      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1, 0);
-      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1, 0);
-      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,1, 0);
+      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1, 0,0);
+      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1, 0,0);
+      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,1, 0,0);
     ) : (
       t = mem_stlist + i*st_num;
-      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,0, 0);
-      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,0, 0);
-      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,0, 0);
+      draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,0, 0,0);
+      draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,0, 0,0);
+      draw_value_tweaker(xpos+w-(24+gap),ypos+h-24-gap,t + st_note3,0, 0,0);
     );
     (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my,mw,mw) ? (
       rec[st_monmode] = (rec[st_monmode]+1)%3;
@@ -593,6 +607,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       i == 3 ? gfx_set(0.0, 0.6, 0.4) : 
       i == 4 ? gfx_set(0.3, 0.3, 0.6) :
       i == 5 ? gfx_set(0.3, 0.5, 0.8) :
+      i == 6 ? gfx_set(0.8 ,0.5, 0.3) :
                gfx_set(0.5, 0.0, 0.0);
         
       draw_button(xpos,ypos,w,h,0);
@@ -601,7 +616,9 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       gfx_y=ypos+h/2 - 4;
       gfx_drawstr(mem_gen_names[i]);
     );
-    draw_value_tweaker(xpos+w-(i==4||i==5?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,force_redraw, i==4?1:i==5?2:0);
+    draw_value_tweaker(xpos+w-(i>=4?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,
+       force_redraw, i==4?1:i==5?2:i==6?3:0,
+       i>=4?mouse_in(xpos,ypos,w,h):0);
     
     !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
       gen_action(i);
