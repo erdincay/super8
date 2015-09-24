@@ -33,11 +33,6 @@ g_fadespeed2 = 1.0-g_fadespeed;
 g_infthreshdb = -120;
 g_infthresh = 10^(g_infthreshdb/20);
 
-
-// fade to use when shortening a loop (probably should make 
-// this an option as it adds clicks when using double-no-rep after
-g_shorten_fadesize=0.005*srate; 
-
 // per-channel state/configuration record (mem_stlist)
 st_monmode = 0; // mirrors chX.monmode
 st_note1 = 1; // mirrors chX.note/chX.note2/chX.note3
@@ -172,7 +167,7 @@ function repeatbuf(buf,osz, nsz) local(p,s)
 function xfadebuf(buf, osz, nsz) local(fsz,s,ds)
 (
   s=0;
-  fsz = min(g_shorten_fadesize,osz-nsz)|0;
+  fsz = min(0.001*mem_gen_cfg[5]*srate,osz-nsz)|0;
   ds=1/fsz;
   // fade buf[0..fsz] with buf[nsz..nsz+fsz] 
   loop(fsz,
@@ -256,10 +251,11 @@ ext_noinit == 0 ? (
   
   alloc.top=0;
   
-  mem_gen_sz=5;
+  mem_gen_sz=6;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
-  mem_gen_cfg[4]=g_infthreshdb;
+  mem_gen_cfg[4]=g_infthreshdb; // gate threshold
+  mem_gen_cfg[5]= 5; // msec fade when using halve
   
   mem_gen_names = alloc(mem_gen_sz);
   mem_gen_names[0] = "kill";
@@ -267,7 +263,7 @@ ext_noinit == 0 ? (
   mem_gen_names[2] = "double";
   mem_gen_names[3] = "double\nno rep";
   mem_gen_names[4] = "init rec\nstart gate";
-  
+  mem_gen_names[5] = "halve\nfadesz";  
   
   mem_stlist = alloc(g_nchan * st_num);
 
@@ -447,13 +443,15 @@ function draw_speaker(xpos, ypos, w)
 
 function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t w)
 (          
-  w = tweakmode == 1 ? 56 : 24;
+  w = tweakmode == 1 || tweakmode==2 ? 56 : 24;
   cap == midimem ? (
     (mouse_cap&2) ? (
       t = ((mouse_y-capy)*.25)|0;
       t ? (
         tweakmode==1 ? (
           midimem[0] = min(max(midimem[0]-t,g_infthreshdb),-1);
+        ) : tweakmode == 2 ? (
+          midimem[0] = min(max(midimem[0]-t,0),500);
         ) : (
           midimem[0] = min(max(midimem[0]-t,0),128);
         );
@@ -479,8 +477,10 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode) local(cap capy t 
     tweakmode == 1 ? (
       gfx_x=xpos+4;
       t <= g_infthreshdb ? gfx_drawstr("-inf") : gfx_printf("%.0fdB",t);
-    ) :
-    (
+    ) : tweakmode == 2 ?(
+      gfx_x=xpos+4;
+      gfx_printf("%.0f ms",t);    
+    ) : (
       gfx_x=xpos + (t>=100?0:t>=10?5:9);
       gfx_printf(t > 127 ? "OFF" : "%d",t);
     );
@@ -592,6 +592,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       i == 2 ? gfx_set(0.0, 0.6, 0.5) : 
       i == 3 ? gfx_set(0.0, 0.6, 0.4) : 
       i == 4 ? gfx_set(0.3, 0.3, 0.6) :
+      i == 5 ? gfx_set(0.3, 0.5, 0.8) :
                gfx_set(0.5, 0.0, 0.0);
         
       draw_button(xpos,ypos,w,h,0);
@@ -600,7 +601,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       gfx_y=ypos+h/2 - 4;
       gfx_drawstr(mem_gen_names[i]);
     );
-    draw_value_tweaker(xpos+w-(i==4?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,force_redraw, i==4);
+    draw_value_tweaker(xpos+w-(i==4||i==5?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,force_redraw, i==4?1:i==5?2:0);
     
     !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
       gen_action(i);
