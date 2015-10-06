@@ -240,12 +240,33 @@ function reset() local(i,lp)
   g_length=g_pos=0;
 );
 
-function gen_action(i)
+
+function estbpm(len) local(bpm)
+(
+  bpm = 120.0 * srate / len;
+  while (bpm < 60) ( bpm*=2; );
+  while (bpm > 240) ( bpm/=2; );
+  bpm;
+);
+
+function gen_action(i) local(rec, flag)
 (
   i == 0 ? reset() : 
   i == 1 ? adjustsizes(0.5,1) : 
   i == 2 ? adjustsizes(2,1) : 
-  i == 3 ? adjustsizes(2,0);
+  i == 3 ? adjustsizes(2,0) : 
+  i == 7 ? (
+    // export!
+    rec = mem_stlist;
+    flag=3<<16;
+    g_length > 0 ? loop(g_nchan,
+      rec[st_state] ? (
+        export_buffer_to_project(rec[st_buf],g_length,1,srate,(rec-mem_stlist)/st_num, flag, flag?estbpm(g_length));
+        flag=0;
+      );
+      rec+=st_num;
+    );
+  );
 );
 
 
@@ -255,7 +276,7 @@ ext_noinit == 0 ? (
   
   alloc.top=0;
   
-  mem_gen_sz=7;
+  mem_gen_sz=8;
   mem_gen_cfg = alloc(mem_gen_sz);
   memset(mem_gen_cfg,128,mem_gen_sz);
   mem_gen_cfg[4]=g_infthreshdb; // gate threshold
@@ -270,6 +291,7 @@ ext_noinit == 0 ? (
   mem_gen_names[4] = "init rec\nstart gate";
   mem_gen_names[5] = "halve\nfadesz";  
   mem_gen_names[6] = "length\ntweak";  
+  mem_gen_names[7] = "add to\nproject";
   
   mem_stlist = alloc(g_nchan * st_num);
 
@@ -406,14 +428,6 @@ g_chan_selected >= 0 ? (
 @gfx 420 180
 
 gfx_clear=-1;
-
-function estbpm(len) local(bpm)
-(
-  bpm = 120.0 * srate / len;
-  while (bpm < 60) ( bpm*=2; );
-  while (bpm > 240) ( bpm/=2; );
-  bpm;
-);
 
 function draw_button(xpos,ypos, w, h, bordersz)
 (
@@ -612,6 +626,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       i == 4 ? gfx_set(0.3, 0.3, 0.6) :
       i == 5 ? gfx_set(0.3, 0.5, 0.8) :
       i == 6 ? gfx_set(0.8 ,0.5, 0.3) :
+      i == 7 ? gfx_set(0.7, 0.6, 0.7) :
                gfx_set(0.5, 0.0, 0.0);
         
       draw_button(xpos,ypos,w,h,0);
@@ -620,9 +635,9 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       gfx_y=ypos+h/2 - 4;
       gfx_drawstr(mem_gen_names[i]);
     );
-    draw_value_tweaker(xpos+w-(i>=4?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,
+    draw_value_tweaker(xpos+w-(i>=4&&i!=7?56:24)-gap,ypos+h-24-gap,mem_gen_cfg + i,
        force_redraw, i==4?1:i==5?2:i==6?3:0,
-       i>=4?mouse_in(xpos,ypos,w,h):0);
+       i>=4 && i!=7?mouse_in(xpos,ypos,w,h):0);
     
     !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
       gen_action(i);
