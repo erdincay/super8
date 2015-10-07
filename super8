@@ -79,8 +79,12 @@ function init(x, n1,n2,n3)
 );
 
 function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
-  fpos = fpos*g_fadespeed + this.sk_fpos;
-  fpos2 = fpos2*g_fadespeed + this.sk_fpos2;  
+  g_recstart_gate==0 ? (
+    fpos = fpos*g_fadespeed + this.sk_fpos;
+    fpos2 = fpos2*g_fadespeed + this.sk_fpos2;
+  ) : (
+    fpos = fpos2 = 0;
+  );
   
   monmode == 0 ? (
     // no monitoring
@@ -370,16 +374,16 @@ g_chan_selected >= 0 ? (
   );
 );
 
-g_recstart_gate==0 ? (
-  spl0=ch1.process(spl0);
-  spl1=ch2.process(spl1);
-  spl2=ch3.process(spl2);
-  spl3=ch4.process(spl3);
-  spl4=ch5.process(spl4);
-  spl5=ch6.process(spl5);
-  spl6=ch7.process(spl6);
-  spl7=ch8.process(spl7);
-  
+spl0=ch1.process(spl0);
+spl1=ch2.process(spl1);
+spl2=ch3.process(spl2);
+spl3=ch4.process(spl3);
+spl4=ch5.process(spl4);
+spl5=ch6.process(spl5);
+spl6=ch7.process(spl6);
+spl7=ch8.process(spl7);
+
+g_recstart_gate==0 ? ( 
   (g_pos += 1) >= g_length ? (
     g_firstrec ? (
        g_pos >= g_maxlen ? (
