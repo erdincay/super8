@@ -256,13 +256,14 @@ function gen_action(i) local(rec, flag)
   i == 2 ? adjustsizes(2,1) : 
   i == 3 ? adjustsizes(2,0) : 
   i == 7 ? (
-    // export!
+    // export, yay reaper 5.05 undocumented function!
     rec = mem_stlist;
-    flag=3<<16;
+    flag=1<<16; // go to end of project
+    flag|=2<<16; // use tempo from next parameter
     g_length > 0 ? loop(g_nchan,
       rec[st_state] ? (
         export_buffer_to_project(rec[st_buf],g_length,1,srate,(rec-mem_stlist)/st_num, flag, flag?estbpm(g_length));
-        flag=0;
+        flag=0; // only go to end/set tempo for first item
       );
       rec+=st_num;
     );
