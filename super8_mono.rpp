@@ -438,7 +438,7 @@
     SHOWINMIX 1 0.6667 0.5 1 0.5 -1 -1 -1
     FREEMODE 0
     SEL 0
-    REC 1 4096 1 0 0 0 0
+    REC 1 4128 1 0 0 0 0
     VU 2
     TRACKHEIGHT 0 0
     INQ 0 0 0 0.5 100 0 0 100
