@@ -1,8 +1,34 @@
 desc:Super8 MIDI-controlled synchronized looper
 
-// uses natural notes as base pairs for record/play: 
-//   (CD FGA CD) 36, 38, 41, 43, 45, 48, 50, 53
-// note base=start record/end loop. base+1 = play loop (stops record), or stop
+// General notes:
+// 8 channels of audio input (1 channel per channel)
+// 9 channels of audio output (1 channel per channel, 9th channel is selected-channel-only monitoring output)
+
+// 8 channels are all synchronized. You can turn each channel on and off and overdub on each channel.
+
+// MIDI assigments are mappable by right-click-dragging them in the UI.
+// for each channel:
+//   - note1=if not recording, start record. 
+//           If already recording (and initial length-setting pass), sets length and continues (overdub)
+//           If already recording (and length is set), goes back to playback
+//   - note2=toggle playback (stop/rec->play, play->stop)
+//   - note3=toggle selected-for-monitoring
+// Right click the channel's monitoring icon to go through off/auto/always-on. 
+//   - I use 'off' for things like mic'd drums
+//   - I use 'always-on' for stuff where the source should always be audible (usually looping is less important)
+
+// extra buttons (click, or drag them):
+// - kill (click) -- deletes ALL!
+// - halve length (click)
+// - double length (click)
+// - double length (no repeat) (click) -- if there's existing content after the current loop, it won't be overwritten
+// - start gate: when recording the initial loop, use this gate value before starting recording 
+//   (useful for hand-shortages)
+// - halve fadesize: crossfade this amount when halving loop. 
+//   If you intend to double (no repeat) back up, set to 0ms and accept the clicks.
+// - add to project: adds active channels as .wav files to the end of the project, on their respective tracks, 
+//   setting the tempo accordingly. (!) This uses a new undocumented (except for this) JSFX API...
+
 
 in_pin:input 1
 in_pin:input 2
