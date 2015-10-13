@@ -1,5 +1,8 @@
 desc:Super8 MIDI-controlled synchronized looper
 
+// Copyright (C) 2015 Cockos Inc
+// LICENSE: LGPL v2.
+
 // General notes:
 // 8 channels of audio input (1 channel per channel)
 // 9 channels of audio output (1 channel per channel, 9th channel is selected-channel-only monitoring output)
@@ -452,7 +455,8 @@ g_chan_selected >= 0 ? (
 ) : (
   spl8=0;
 );
-@gfx 420 180
+
+@gfx 420 480
 
 gfx_clear=-1;
 
