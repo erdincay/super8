@@ -73,7 +73,9 @@ st_buf   = 5; // pointer to audio buffer
 st_dirty = 6;  // set if buffer is dirty, and also may indicate how much of it 
                // is using max(mem_stlist[st_dirty],chX.dirty_top+1)
 st_lastd = 7; // UI flags for mode + monitor + dirty
-st_num   = 8;
+st_latchmode = 8; // wait to apply state changes until end of loop
+st_latchstate = 9; // -1 = no queued latch, 0..2
+st_num   = 10;
 
 
 function alloc(sz) ( (this.top+=sz)-sz; );
@@ -102,48 +104,63 @@ function init(x, n1,n2,n3)
   rec[st_lastd]=-1;
   rec[st_dirty]=0;
   rec[st_monmode] = 1;
+  rec[st_latchmode] = 0;
+  rec[st_latchstate] = -1;
   rec[st_buf] = buf;
   
   this.updatefromrec();
 );
 
-function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
+function setstate(st, allowlatch) instance(sk_fpos, sk_fpos2, rec) local(dt)
 (
-  rec[st_state] ? (
-    st==0 ? ( 
-      g_active_cnt -= 1; 
+  allowlatch && !g_firstrec && g_active_cnt > 0 && g_length > 0 && rec[st_latchmode] ? (
+    rec[st_latchstate]=st;
+  ) : (  
+    rec[st_state] ? (
+      st==0 ? ( 
+        g_active_cnt -= 1; 
+      ) : (
+        g_firstrec = 0;   
+        g_recstart_gate = 0;
+      );
     ) : (
-      g_firstrec = 0;   
-      g_recstart_gate = 0;
-    );
-  ) : (
-    st>0 ? ( 
-      st == 2 && (dt = max(rec[st_dirty], this.dirty_top+1)) > 0 ? (
-        memset(this.buf,0,dt);
-        this.dirty_top=-1;
-        rec[st_dirty]=0;
-      );
-      
-      (g_active_cnt += 1) == 1 ? (
-        st == 2 ? ( 
-          g_recstart_gate = mem_gen_cfg[4] > g_infthreshdb ? ( 10^(mem_gen_cfg[4]/20) );
-          g_pos = 0;
-          g_length = 0; 
-          g_firstrec = 1; 
-        );        
+      st>0 ? ( 
+        st == 2 && (dt = max(rec[st_dirty], this.dirty_top+1)) > 0 ? (
+          memset(this.buf,0,dt);
+          this.dirty_top=-1;
+          rec[st_dirty]=0;
+        );
+        
+        (g_active_cnt += 1) == 1 ? (
+          st == 2 ? ( 
+            g_recstart_gate = mem_gen_cfg[4] > g_infthreshdb ? ( 10^(mem_gen_cfg[4]/20) );
+            g_pos = 0;
+            g_length = 0; 
+            g_firstrec = 1; 
+          );        
+        );
       );
     );
+    rec[st_state] = st;
+    rec[st_dirty] = max(max(rec[st_dirty],this.dirty_top+1),st==2);
+    
+    sk_fpos = st == 2 ? g_fadespeed2 : 0;
+    sk_fpos2 = st > 0 ? g_fadespeed2 : 0;
   );
-  rec[st_state] = st;
-  rec[st_dirty] = max(max(rec[st_dirty],this.dirty_top+1),st==2);
-  
-  sk_fpos = st == 2 ? g_fadespeed2 : 0;
-  sk_fpos2 = st > 0 ? g_fadespeed2 : 0;
 );
 
+function getstate() local(l) instance(rec) (
+  l = rec[st_latchstate];
+  l>=0?l:rec[st_state];
+);
 
 function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
-  g_recstart_gate==0 ? (
+  g_recstart_gate==0 ? (    
+    g_pos == 0 && this.rec[st_latchstate]>=0 && !g_firstrec && g_length > 0 ? (
+      this.setstate(this.rec[st_latchstate],0);
+      this.rec[st_latchstate]=-1;
+    );
+    
     fpos = fpos*g_fadespeed + this.sk_fpos;
     fpos2 = fpos2*g_fadespeed + this.sk_fpos2;
   ) : (
@@ -177,10 +194,10 @@ function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
 
 function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
    m2 == note ? (
-     this.setstate((rec[st_state] == 2 && g_firstrec==0) ? 1 : 2);
+     this.setstate((this.getstate() == 2 && g_firstrec==0) ? 1 : 2,1);
      g_chan_selected = this.idx;
    ) : m2 == note2 ? (
-     this.setstate(rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0);
+     this.setstate(this.getstate() == 2 || (this.getstate()==0 && g_length) ? 1 : 0,1);
      g_chan_selected = this.idx;
    ) : m2 == note3 ? (
      g_chan_selected = (g_chan_selected == this.idx) ? -1 : this.idx;
@@ -249,14 +266,14 @@ function updatechfromrec()
 function reset() local(i,lp)
 ( 
   g_chan_selected=-1;
-  ch1.setstate(0); ch1.dirty_top=-1; // setstate() will latch dirty_top to st_dirty
-  ch2.setstate(0); ch2.dirty_top=-1;
-  ch3.setstate(0); ch3.dirty_top=-1;
-  ch4.setstate(0); ch4.dirty_top=-1;
-  ch5.setstate(0); ch5.dirty_top=-1;
-  ch6.setstate(0); ch6.dirty_top=-1;
-  ch7.setstate(0); ch7.dirty_top=-1;
-  ch8.setstate(0); ch8.dirty_top=-1;
+  ch1.setstate(0,0); ch1.dirty_top=-1; // setstate() will latch dirty_top to st_dirty
+  ch2.setstate(0,0); ch2.dirty_top=-1;
+  ch3.setstate(0,0); ch3.dirty_top=-1;
+  ch4.setstate(0,0); ch4.dirty_top=-1;
+  ch5.setstate(0,0); ch5.dirty_top=-1;
+  ch6.setstate(0,0); ch6.dirty_top=-1;
+  ch7.setstate(0,0); ch7.dirty_top=-1;
+  ch8.setstate(0,0); ch8.dirty_top=-1;
   i=0;
   lp = mem_stlist;
   loop(g_nchan,
@@ -291,7 +308,7 @@ function gen_action(i) local(rec, flag)
     flag=1<<16; // go to end of project
     flag|=2<<16; // use tempo from next parameter
     g_length > 0 ? loop(g_nchan,
-      rec[st_state] ? (
+      rec[st_state]>0 || rec[st_latchstate]>0 ? (
         export_buffer_to_project(rec[st_buf],g_length,1,srate,(rec-mem_stlist)/st_num, flag, flag?estbpm(g_length));
         flag=0; // only go to end/set tempo for first item
       );
@@ -373,6 +390,12 @@ function doconf() local(i,s) (
     i+=st_num;
   );
   
+  i = mem_stlist;
+  loop(g_nchan,
+    file_var(0,i[st_latchmode]);
+    i+=st_num;
+  );
+   
   file_avail(0)>=0 ? ( // is reading config
     updatechfromrec();
   );
@@ -551,7 +574,7 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein) loc
   );
 );
 
-function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t)
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t my2)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
@@ -572,14 +595,18 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
        g_chan_selected=i;
     );
     mode = rec[st_state];
+    rec[st_latchstate]>=0 && ((time_precise()*16)&7)>4 ? mode = rec[st_latchstate];
+    
     gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
     g_chan_selected == i ? mode|=8;
     rec[st_dirty] ? mode|=16;
     mode |= rec[st_monmode] << 8;
+    rec[st_latchmode] ? mode |= 32;
     
-    mw = (w*.25)|0;
+    mw = (w*.2)|0;
     mx = xpos + w - mw - gap;
     my = ypos+gap;
+    my2 = my + mw + gap;
   
     force_redraw || rec[st_lastd] != mode ? (
       rec[st_lastd] = mode;
@@ -616,6 +643,14 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
         gfx_line(mx,my,mx+mw,my+mw);
         gfx_line(mx+mw,my,mx,my+mw);
       );
+      
+      rec[st_latchmode] ? gfx_set(0.5,0.5,0.3) : gfx_set(0.2);
+      gfx_rect(mx,my2,mw,mw);
+      gfx_set(rec[st_latchmode]?1:.15);
+      gfx_line(mx+mw*.2,my2+mw*.5, mx+mw-4,my2+mw*.5);
+      gfx_line(mx+mw*.7-4,my2+mw*.8, mx+mw-4,my2+mw*.5);
+      gfx_line(mx+mw*.7-4,my2+mw*.2, mx+mw-4,my2+mw*.5);
+      
     
       rec[st_dirty] ? (
         gfx_set(0,0.5,0.75);
@@ -636,7 +671,10 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       rec[st_monmode] = (rec[st_monmode]+1)%3;
       updatechfromrec();
     );
-    
+    (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my2,mw,mw) ? (
+      rec[st_latchmode] = !rec[st_latchmode];
+      updatechfromrec();
+    );    
     xpos += w + gap;
     i+=1;
     rec += st_num;
