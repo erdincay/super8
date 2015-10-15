@@ -107,39 +107,6 @@ function init(x, n1,n2,n3)
   this.updatefromrec();
 );
 
-function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
-  g_recstart_gate==0 ? (
-    fpos = fpos*g_fadespeed + this.sk_fpos;
-    fpos2 = fpos2*g_fadespeed + this.sk_fpos2;
-  ) : (
-    fpos = fpos2 = 0;
-  );
-  
-  monmode == 0 ? (
-    // no monitoring
-    fpos > 0.0001 ? (
-      this.dirty_top = max(this.dirty_top,g_pos);
-      r=buf[g_pos]*fpos2;
-      buf[g_pos] += s*fpos;
-      r;
-    ) : fpos2 > 0.0001 ? (
-      buf[g_pos]*fpos2;
-    ) : 0;
-    
-  ) : ( 
-    monvol = monvol*g_fadespeed + (monmode>=2 || g_chan_selected == this.idx)*g_fadespeed2;
-  
-    fpos > 0.0001 ? (
-      this.dirty_top = max(this.dirty_top,g_pos);
-      (buf[g_pos] += s*fpos) * fpos2 + s * max(0, monvol - fpos*fpos2);
-    ) : fpos2 > 0.0001 ? (
-      buf[g_pos]*fpos2 + s*monvol;
-    ) : (
-      s*monvol;
-    );
-  );
-);
-
 function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
 (
   rec[st_state] ? (
@@ -172,6 +139,40 @@ function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
   
   sk_fpos = st == 2 ? g_fadespeed2 : 0;
   sk_fpos2 = st > 0 ? g_fadespeed2 : 0;
+);
+
+
+function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
+  g_recstart_gate==0 ? (
+    fpos = fpos*g_fadespeed + this.sk_fpos;
+    fpos2 = fpos2*g_fadespeed + this.sk_fpos2;
+  ) : (
+    fpos = fpos2 = 0;
+  );
+  
+  monmode == 0 ? (
+    // no monitoring
+    fpos > 0.0001 ? (
+      this.dirty_top = max(this.dirty_top,g_pos);
+      r=buf[g_pos]*fpos2;
+      buf[g_pos] += s*fpos;
+      r;
+    ) : fpos2 > 0.0001 ? (
+      buf[g_pos]*fpos2;
+    ) : 0;
+    
+  ) : ( 
+    monvol = monvol*g_fadespeed + (monmode>=2 || g_chan_selected == this.idx)*g_fadespeed2;
+  
+    fpos > 0.0001 ? (
+      this.dirty_top = max(this.dirty_top,g_pos);
+      (buf[g_pos] += s*fpos) * fpos2 + s * max(0, monvol - fpos*fpos2);
+    ) : fpos2 > 0.0001 ? (
+      buf[g_pos]*fpos2 + s*monvol;
+    ) : (
+      s*monvol;
+    );
+  );
 );
 
 function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
