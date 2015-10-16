@@ -306,25 +306,13 @@ function estbpm(len) local(bpm)
   bpm;
 );
 
-function gen_action(i) local(rec, flag)
+function gen_action(i)
 (
   i == 0 ? reset() : 
   i == 1 ? adjustsizes(0.5,1) : 
   i == 2 ? adjustsizes(2,1) : 
   i == 3 ? adjustsizes(2,0) : 
-  i == 7 ? (
-    // export, yay reaper 5.05 undocumented function!
-    rec = mem_stlist;
-    flag=1<<16; // go to end of project
-    flag|=2<<16; // use tempo from next parameter
-    g_length > 0 ? loop(g_nchan,
-      rec[st_state] ? (
-        export_buffer_to_project(rec[st_buf],g_length,1,srate,(rec-mem_stlist)/st_num, flag, flag?estbpm(g_length));
-        flag=0; // only go to end/set tempo for first item
-      );
-      rec+=st_num;
-    );
-  );
+  i == 7 ? g_need_export=1; 
 );
 
 
@@ -365,6 +353,7 @@ ext_noinit == 0 ? (
   mem_stlist = alloc(g_nchan * st_num);
 
   g_inject_midinote = 0;
+  g_need_export = 0;
 
   g_inactive_blockcnt=0;  
   g_active_cnt = 0; 
@@ -462,10 +451,11 @@ while (sidx == nextmsg_offs)
     ch7.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     ch8.onmsg(nextmsg_1,nextmsg_2,nextmsg_3);
     
-    nextmsg_2 == mem_gen_cfg[0] ? gen_action(0) :
-      nextmsg_2 == mem_gen_cfg[1] ? gen_action(1) :
-      nextmsg_2 == mem_gen_cfg[2] ? gen_action(2) :
-      nextmsg_2 == mem_gen_cfg[3] ? gen_action(3);
+    nextmsg_2 == mem_gen_cfg[0] ? gen_action(0);
+    nextmsg_2 == mem_gen_cfg[1] ? gen_action(1);
+    nextmsg_2 == mem_gen_cfg[2] ? gen_action(2);
+    nextmsg_2 == mem_gen_cfg[3] ? gen_action(3); 
+    nextmsg_2 == mem_gen_cfg[7] ? gen_action(7);
       
     g_lastmsg = nextmsg_2;
   );
@@ -835,3 +825,26 @@ g_lastmsg>=0 && g_lastmsg_draw!=g_lastmsg ? (
 last_w = gfx_w;
 last_h = gfx_h;
 last_mouse_cap = mouse_cap;
+
+
+// export must happen from UI thread
+function export()  local(rec, flag)
+(
+  // export, yay reaper 5.05 undocumented function!
+  rec = mem_stlist;
+  flag=1<<16; // go to end of project
+  flag|=2<<16; // use tempo from next parameter
+  g_length > 0 ? loop(g_nchan,
+    rec[st_state] ? (
+      export_buffer_to_project(rec[st_buf],g_length,1,srate,(rec-mem_stlist)/st_num, flag, flag?estbpm(g_length));
+      flag=0; // only go to end/set tempo for first item
+    );
+    rec+=st_num;
+  );
+);
+
+g_need_export ? (
+  export();
+  g_need_export = 0;
+);
+
