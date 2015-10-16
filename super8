@@ -688,8 +688,8 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     lx = xpos + w - gap;
     ly = ypos+h-24-gap;
     w > 80 ? ( lx -= draw_value_tweaker(-lx,ly,t + st_note3,wantr, 0,0, "mon") + gap; );
-    lx -= draw_value_tweaker(-lx,ly,t + st_note2,wantr, 0,0, rec[st_state] == 1 ? "st" : "pl") + gap;
-    lx -= draw_value_tweaker(-lx,ly,t + st_note1,wantr, 0,0, rec[st_state] == 2 && !g_firstrec ? "pl" : "rec") + gap;
+    lx -= draw_value_tweaker(-lx,ly,t + st_note2,wantr, 0,0, rec[st_state] == 1 ? "stp" : "ply") + gap;
+    lx -= draw_value_tweaker(-lx,ly,t + st_note1,wantr, 0,0, rec[st_state] == 2 && !g_firstrec ? "ply" : "rec") + gap;
     
     w > 80 ? (
       lx = xpos+gap;
