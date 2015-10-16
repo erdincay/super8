@@ -16,6 +16,7 @@ desc:Super8 MIDI-controlled synchronized looper
 //           If already recording (and length is set), goes back to playback
 //   - note2=toggle playback (stop/rec->play, play->stop)
 //   - note3=toggle selected-for-monitoring
+//   - note4=reverse loop
 // Right click the channel's monitoring icon to go through off/auto/always-on. 
 //   - I use 'off' for things like mic'd drums
 //   - I use 'always-on' for stuff where the source should always be audible (usually looping is less important)
@@ -64,16 +65,17 @@ g_infthresh = 10^(g_infthreshdb/20);
 
 // per-channel state/configuration record (mem_stlist)
 st_monmode = 0; // mirrors chX.monmode
-st_note1 = 1; // mirrors chX.note/chX.note2/chX.note3
+st_note1 = 1; // mirrors chX.note/chX.note2/chX.note3/chX.note4
 st_note2 = 2;
 st_note3 = 3;
+st_note4 = 4; // reverse note
 
-st_state = 4; // 0=off, 1=play, 2=recording
-st_buf   = 5; // pointer to audio buffer
-st_dirty = 6;  // set if buffer is dirty, and also may indicate how much of it 
+st_state = 5; // 0=off, 1=play, 2=recording
+st_buf   = 6; // pointer to audio buffer
+st_dirty = 7;  // set if buffer is dirty, and also may indicate how much of it 
                // is using max(mem_stlist[st_dirty],chX.dirty_top+1)
-st_lastd = 7; // UI flags for mode + monitor + dirty
-st_num   = 8;
+st_lastd = 8; // UI flags for mode + monitor + dirty
+st_num   = 9;
 
 
 function alloc(sz) ( (this.top+=sz)-sz; );
@@ -83,6 +85,7 @@ function updatefromrec() instance(rec)
   this.note  = rec[st_note1];
   this.note2 = rec[st_note2];
   this.note3 = rec[st_note3];
+  this.note4 = rec[st_note4];
   this.monmode = rec[st_monmode];
 );
 
@@ -98,6 +101,7 @@ function init(x, n1,n2,n3)
   rec[st_note1] = n1;
   rec[st_note2] = n2;
   rec[st_note3] = n3;
+  rec[st_note4] = 128;
   rec[st_state]=0;
   rec[st_lastd]=-1;
   rec[st_dirty]=0;
@@ -175,7 +179,7 @@ function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
   );
 );
 
-function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
+function onmsg(m1,m2,m3) instance(rec,note,note2,note3,note4) local(i,x,tmp) (
    m2 == note || m2 == 1024+rec+st_note1 ? (
      this.setstate((rec[st_state] == 2 && g_firstrec==0) ? 1 : 2);
      g_chan_selected = this.idx;
@@ -184,6 +188,18 @@ function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
      g_chan_selected = this.idx;
    ) : m2 == note3 ? (
      g_chan_selected = (g_chan_selected == this.idx) ? -1 : this.idx;
+   ) : m2 == note4 || m2 == 1024+rec+st_note4 ? (
+     // reverse
+     i=this.buf;
+     x=this.buf+g_length-1;
+     loop(g_length/2,
+       tmp=i[0];
+       i[0]=x[0];
+       x[0]=tmp;
+       x-=1;
+       i+=1;
+     );
+     rec[st_dirty] = this.dirty_top = max(rec[st_dirty],max(this.dirty_top,g_length));     
    );
 );
 
@@ -381,6 +397,14 @@ function doconf() local(i,s) (
     i+=st_num;
   );
   
+  file_avail(0)>=8 ? (
+    i = mem_stlist;
+    loop(g_nchan,
+      file_var(0,i[st_note4]);
+      i+=st_num;
+    );  
+  );
+  
   file_avail(0)>=0 ? ( // is reading config
     updatechfromrec();
   );
@@ -513,7 +537,7 @@ function draw_speaker(xpos, ypos, w)
 function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl) local(cap capy t w)
 (          
   w = tweakmode > 0 ? 56 : 24;
-  xpos -= w;
+  xpos < 0 ? xpos = (-xpos)-w;
   cap == midimem ? (
     (mouse_cap&2) ? (
       t = ((mouse_y-capy)*(tweakmode==3 ? 1 : .25))|0;
@@ -545,7 +569,7 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
   cap == -1 ? (
     (mouse_cap & 1) && !(last_mouse_cap&1) && mouse_in(xpos,ypos,w,24) && midimem >= mem_stlist && midimem < mem_stlist+st_num*g_nchan ? (
       t = (midimem-mem_stlist)%st_num;
-      t == st_note1 || t == st_note2 ? (
+      t == st_note1 || t == st_note2 || t == st_note4 ? (
         g_inject_midinote = 1024+midimem;
       );
     ) : (mouse_cap & 2) && !(last_mouse_cap&2) && (forcemousein||mouse_in(xpos,ypos,w,24)) ? (
@@ -663,9 +687,15 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     t = mem_stlist + i*st_num;
     lx = xpos + w - gap;
     ly = ypos+h-24-gap;
-    w > 80 ? ( lx -= draw_value_tweaker(lx,ly,t + st_note3,wantr, 0,0, "mon") + gap; );
-    lx -= draw_value_tweaker(lx,ly,t + st_note2,wantr, 0,0, "pl") + gap;
-    lx -= draw_value_tweaker(lx,ly,t + st_note1,wantr, 0,0, "rec") + gap;
+    w > 80 ? ( lx -= draw_value_tweaker(-lx,ly,t + st_note3,wantr, 0,0, "mon") + gap; );
+    lx -= draw_value_tweaker(-lx,ly,t + st_note2,wantr, 0,0, "pl") + gap;
+    lx -= draw_value_tweaker(-lx,ly,t + st_note1,wantr, 0,0, "rec") + gap;
+    
+    w > 80 ? (
+      lx = xpos+gap;
+      ly = ypos+h-48-gap*2 - 8;
+      lx -= draw_value_tweaker(xpos+gap,ly,t + st_note4,wantr, 0,0, "rev") + gap;    
+    );
     
     (mouse_cap&2) && !(last_mouse_cap&2) && mouse_in(mx,my,mw,mw) ? (
       rec[st_monmode] = (rec[st_monmode]+1)%3;
@@ -702,7 +732,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
       gfx_y=ypos+h/2 - 4;
       gfx_drawstr(mem_gen_names[i]);
     );
-    draw_value_tweaker(xpos+w-gap,ypos+h-24-gap,mem_gen_cfg + i,
+    draw_value_tweaker(-(xpos+w-gap),ypos+h-24-gap,mem_gen_cfg + i,
        force_redraw, 
        mem_gen_modes[i],
        mem_gen_modes[i]?mouse_in(xpos,ypos,w,h):0, // gate/fadesize/lengthtweak modes all allow right-click anywhere in the button
