@@ -176,10 +176,10 @@ function process(s) instance(buf, fpos, fpos2, monvol, monmode) local(r) (
 );
 
 function onmsg(m1,m2,m3) instance(rec,note,note2,note3) (
-   m2 == note ? (
+   m2 == note || m2 == 1024+rec+st_note1 ? (
      this.setstate((rec[st_state] == 2 && g_firstrec==0) ? 1 : 2);
      g_chan_selected = this.idx;
-   ) : m2 == note2 ? (
+   ) : m2 == note2  || m2 == 1024+rec+st_note2 ? (
      this.setstate(rec[st_state] == 2 || (rec[st_state]==0 && g_length) ? 1 : 0);
      g_chan_selected = this.idx;
    ) : m2 == note3 ? (
@@ -326,6 +326,8 @@ ext_noinit == 0 ? (
   
   mem_stlist = alloc(g_nchan * st_num);
 
+  g_inject_midinote = 0;
+
   g_inactive_blockcnt=0;  
   g_active_cnt = 0; 
   g_length = 0;
@@ -391,7 +393,15 @@ g_active_cnt==0? (
 
 sidx=0;
 nextmsg_offs=-1;
-midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);
+g_inject_midinote >= 1024 ? (
+  nextmsg_offs = 0;
+  nextmsg_1=0x90;
+  nextmsg_2=g_inject_midinote;
+  nextmsg_3=127;
+  g_inject_midinote=0;
+) : (
+  midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);
+);
 
 @sample
 while (sidx == nextmsg_offs)
@@ -524,10 +534,17 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein) loc
       cap = -1;
     );
   );
-  cap == -1 && (mouse_cap & 2) && (forcemousein||mouse_in(xpos,ypos,w,24)) ? (
-    cap = midimem;
-    tweakmode == 3 ? midimem[0]=0;
-    capy = mouse_y;
+  cap == -1 ? (
+    (mouse_cap & 1) && !(last_mouse_cap&1) && mouse_in(xpos,ypos,w,24) && midimem >= mem_stlist && midimem < mem_stlist+st_num*g_nchan ? (
+      t = (midimem-mem_stlist)%st_num;
+      t == st_note1 || t == st_note2 ? (
+        g_inject_midinote = 1024+midimem;
+      );
+    ) : (mouse_cap & 2) && (forcemousein||mouse_in(xpos,ypos,w,24)) ? (
+      cap = midimem;
+      tweakmode == 3 ? midimem[0]=0;
+      capy = mouse_y;
+    );
   );
   draw ? (
     t=midimem[0];
