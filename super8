@@ -551,13 +551,16 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein) loc
   );
 );
 
-function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t)
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t nrows)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
   gap = 4;
   rowsize=4;
-  w=0|((gfx_w- gap*(rowsize-1))/rowsize);
+  nrows = 4;
+  w=0|min(
+    ((gfx_w- gap*(rowsize-1))/rowsize),
+    ((gfx_h-ypos - 8 - gap*(nrows-1))/nrows));
   
   h=w;
   i=0;
@@ -572,12 +575,16 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
        g_chan_selected=i;
     );
     mode = rec[st_state];
-    gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
+    mode ? (
+      gfx_set(mode==2 ? 1 : 0.25,mode==1?1:0.25, 0.25);
+    ) : (
+      rec[st_dirty] ? gfx_set(0.3,0.3,0.4) : gfx_set(0.25);
+    );
     g_chan_selected == i ? mode|=8;
     rec[st_dirty] ? mode|=16;
     mode |= rec[st_monmode] << 8;
     
-    mw = (w*.25)|0;
+    mw = (w*.2)|0;
     mx = xpos + w - mw - gap;
     my = ypos+gap;
   
@@ -616,12 +623,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
         gfx_line(mx,my,mx+mw,my+mw);
         gfx_line(mx+mw,my,mx,my+mw);
       );
-    
-      rec[st_dirty] ? (
-        gfx_set(0,0.5,0.75);
-        gfx_rect(xpos+gap,ypos+h-h/8-gap,w-gap*2,ceil(h/8));
-      );
-      
+         
       t = mem_stlist + i*st_num;
       draw_value_tweaker(xpos+w-(24+gap)*3,ypos+h-24-gap,t + st_note1,1, 0,0);
       draw_value_tweaker(xpos+w-(24+gap)*2,ypos+h-24-gap,t + st_note2,1, 0,0);
