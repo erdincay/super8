@@ -112,7 +112,7 @@ function setstate(st) instance(sk_fpos, sk_fpos2, rec) local(dt)
   rec[st_state] ? (
     st==0 ? ( 
       g_active_cnt -= 1; 
-    ) : (
+    ) : g_length > 0 ? (
       g_firstrec = 0;   
       g_recstart_gate = 0;
     );
