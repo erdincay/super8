@@ -200,7 +200,17 @@ function onmsg(m1,m2,m3) instance(rec,note,note2,note3,note4) local(i,x,tmp) (
        i+=1;
      );
      rec[st_dirty] = this.dirty_top = max(rec[st_dirty],max(this.dirty_top,g_length));     
+     rec[st_lastd] = -1;
    );
+);
+
+function redraw_channels() local(p)
+(
+  p=mem_stlist+st_lastd;
+  loop(g_nchan,
+    p[0] = -1;
+    p+=st_num;
+  );
 );
 
 function repeatbuf(buf,osz, nsz) local(p,s)
@@ -247,6 +257,7 @@ function adjustsizes(scale, repup) local(nlen,olen, lp)
     );
     g_length = nlen;
     g_pos %= nlen;
+    redraw_channels();
   );
 );
 
@@ -558,6 +569,7 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
             t ? (
               g_length = max(g_length-t,1);
               g_pos %= g_length;
+              redraw_channels();
             );                   
           );
         ) : (
@@ -607,6 +619,26 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
   w;
 );
 
+function draw_waveform(xpos,ycent,w,amp,bptr,srclen) local(minv,maxv, i,v, di)
+(
+  minv=100;
+  maxv=-100;
+  i=xpos|0;
+  di = w / srclen;
+  ycent|=0;
+  loop(srclen,
+    v=bptr[0];
+    minv=min(v,minv);
+    maxv=max(v,maxv);
+    bptr+=1;
+    v=0|(i+=di);
+    v>xpos ? (
+      gfx_line(xpos=v,ycent+amp*minv,v,ycent+amp*maxv,0);
+      minv=100; maxv=-100;
+    );
+  );
+);
+
 function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t nrows lx ly wantr)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
@@ -647,11 +679,14 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     force_redraw || rec[st_lastd] != mode ? (
       rec[st_lastd] = mode;
       draw_button(xpos,ypos,w,h,g_chan_selected == i ? gap : 0);
-    
+
       gfx_set(1,1,1);
       gfx_x = xpos + 8;
       gfx_y = ypos + 8;
       gfx_printf("%d",i+1);    
+
+      gfx_set(0.5);
+      g_length && rec[st_dirty] && !g_firstrec && w > 80 ? draw_waveform(xpos+gap,ypos+h*.5,w-2*gap,h*.25,rec[st_buf],g_length);
       
       rec[st_monmode]==0 ? (
         gfx_set(0.2)
