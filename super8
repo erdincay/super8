@@ -582,7 +582,7 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
     t=midimem[0];
     gfx_set(.35);
     gfx_rect(xpos,ypos,w,24);
-    gfx_y=ypos + 8;;
+    gfx_y=ypos + (lbl?14:8);
     gfx_set(0.1);
     tweakmode == 1 ? (
       gfx_x=xpos+4;
@@ -599,8 +599,8 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
     );
     lbl ? (
       gfx_set(.5);
-      gfx_x=xpos;
-      gfx_y=ypos-gfx_texth;
+      gfx_x=xpos+w/2-strlen(lbl)/2*8;
+      gfx_y=ypos+2;
       gfx_drawstr(lbl);
     );
   );
@@ -693,7 +693,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     
     w > 80 ? (
       lx = xpos+gap;
-      ly = ypos+h-48-gap*2 - 8;
+      w < 120 ? ly = ypos+h-48-gap*2;
       lx -= draw_value_tweaker(xpos+gap,ly,t + st_note4,wantr, 0,0, "rev") + gap;    
     );
     
