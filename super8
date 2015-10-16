@@ -540,7 +540,7 @@ function draw_speaker(xpos, ypos, w)
 );
 
 // draws it right-aligned to xpos, returns width used
-function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl) local(cap capy t w)
+function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl) local(cap capy t w tw th)
 (          
   w = tweakmode > 0 ? 40 : 24;
   xpos < 0 ? xpos = (-xpos)-w;
@@ -595,13 +595,15 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
               tweakmode==1 ? ( t <= g_infthreshdb ? "-inf" : "%.0f") :
               t > 127 ? "OFF" : "%d",t);
         
-    gfx_y=ypos + (lbl?14:8);
-    gfx_x=xpos + w*.5 - strlen(t)*4;
+    gfx_measurestr(t,tw,th);
+    gfx_y=ypos + (lbl?(22-th):(24-th)*.5);
+    gfx_x=xpos + (w-tw)*.5;
     gfx_set(0.1);
     gfx_drawstr(t);
     lbl ? (
       gfx_set(.5);
-      gfx_x=xpos+w*.5-strlen(lbl)*4;
+      gfx_measurestr(lbl,tw,th);
+      gfx_x=xpos+(w-tw)*.5;
       gfx_y=ypos+2;
       gfx_drawstr(lbl);
     );
@@ -629,7 +631,7 @@ function draw_waveform(xpos,ycent,w,amp,bptr,srclen) local(minv,maxv, i,v, di)
   );
 );
 
-function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t nrows lx ly wantr)
+function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw t nrows lx ly wantr tw th)
 (
   force_redraw = gfx_w != last_w || gfx_h != last_h;
   
@@ -753,8 +755,9 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
         
       draw_button(xpos,ypos,w,h,0);
       gfx_set(1);
-      gfx_x=xpos+w/2 - 8*strlen(mem_gen_names[i])*(match("+\n+",mem_gen_names[i])?0.25:0.5);
-      gfx_y=ypos+h/2 - 4;
+      gfx_measurestr(mem_gen_names[i],tw,th);
+      gfx_x=xpos+(w-tw)*.5;
+      gfx_y=ypos+(h-th)*.5;
       gfx_drawstr(mem_gen_names[i]);
     );
     draw_value_tweaker(-(xpos+w-gap),ypos+h-24-gap,mem_gen_cfg + i,
