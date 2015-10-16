@@ -457,7 +457,7 @@ while (sidx == nextmsg_offs)
     nextmsg_2 == mem_gen_cfg[3] ? gen_action(3); 
     nextmsg_2 == mem_gen_cfg[7] ? gen_action(7);
       
-    g_lastmsg = nextmsg_2;
+    nextmsg_2 < 128 ? g_lastmsg = nextmsg_2;
   );
   nextmsg_offs=-1;
   midirecv(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3) ? midisend(nextmsg_offs,nextmsg_1,nextmsg_2,nextmsg_3);  
