@@ -346,6 +346,11 @@ ext_noinit == 0 ? (
   mem_gen_modes[5] = 2;
   mem_gen_modes[6] = 3;
   
+  mem_gen_lbls = alloc(mem_gen_sz);
+  mem_gen_lbls[4] = "dB";
+  mem_gen_lbls[5] = "ms";
+  mem_gen_lbls[6] = "ms";
+  
   mem_stlist = alloc(g_nchan * st_num);
 
   g_inject_midinote = 0;
@@ -536,7 +541,7 @@ function draw_speaker(xpos, ypos, w)
 // draws it right-aligned to xpos, returns width used
 function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl) local(cap capy t w)
 (          
-  w = tweakmode > 0 ? 56 : 24;
+  w = tweakmode > 0 ? 40 : 24;
   xpos < 0 ? xpos = (-xpos)-w;
   cap == midimem ? (
     (mouse_cap&2) ? (
@@ -582,24 +587,19 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
     t=midimem[0];
     gfx_set(.35);
     gfx_rect(xpos,ypos,w,24);
+    t = sprintf(#,   
+              tweakmode==3 ? "%+.0f" : 
+              tweakmode==2 ? "%.0f" : 
+              tweakmode==1 ? ( t <= g_infthreshdb ? "-inf" : "%.0f") :
+              t > 127 ? "OFF" : "%d",t);
+        
     gfx_y=ypos + (lbl?14:8);
+    gfx_x=xpos + w*.5 - strlen(t)*4;
     gfx_set(0.1);
-    tweakmode == 1 ? (
-      gfx_x=xpos+4;
-      t <= g_infthreshdb ? gfx_drawstr("-inf") : gfx_printf("%.0fdB",t);
-    ) : tweakmode == 2 ? (
-      gfx_x=xpos+4;
-      gfx_printf("%.0f ms",t);    
-    ) : tweakmode == 3 ? (
-      gfx_x=xpos+4;
-      gfx_printf("%+.0f ms",t);    
-    ) : (
-      gfx_x=xpos + (t>=100?0:t>=10?5:9);
-      gfx_printf(t > 127 ? "OFF" : "%d",t);
-    );
+    gfx_drawstr(t);
     lbl ? (
       gfx_set(.5);
-      gfx_x=xpos+w/2-strlen(lbl)/2*8;
+      gfx_x=xpos+w*.5-strlen(lbl)*4;
       gfx_y=ypos+2;
       gfx_drawstr(lbl);
     );
@@ -639,7 +639,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     g_chan_selected == i ? mode|=8;
     rec[st_dirty] ? mode|=16;
     mode |= rec[st_monmode] << 8;
-    
+    g_firstrec ? mode |= 1<<30;
     mw = (w*.2)|0;
     mx = xpos + w - mw - gap;
     my = ypos+gap;
@@ -688,8 +688,8 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
     lx = xpos + w - gap;
     ly = ypos+h-24-gap;
     w > 80 ? ( lx -= draw_value_tweaker(-lx,ly,t + st_note3,wantr, 0,0, "mon") + gap; );
-    lx -= draw_value_tweaker(-lx,ly,t + st_note2,wantr, 0,0, "pl") + gap;
-    lx -= draw_value_tweaker(-lx,ly,t + st_note1,wantr, 0,0, "rec") + gap;
+    lx -= draw_value_tweaker(-lx,ly,t + st_note2,wantr, 0,0, rec[st_state] == 1 ? "st" : "pl") + gap;
+    lx -= draw_value_tweaker(-lx,ly,t + st_note1,wantr, 0,0, rec[st_state] == 2 && !g_firstrec ? "pl" : "rec") + gap;
     
     w > 80 ? (
       lx = xpos+gap;
@@ -736,7 +736,7 @@ function draw(xpos, ypos) local(i w h gap rec mode force_redraw rowsize mx my mw
        force_redraw, 
        mem_gen_modes[i],
        mem_gen_modes[i]?mouse_in(xpos,ypos,w,h):0, // gate/fadesize/lengthtweak modes all allow right-click anywhere in the button
-       0);
+       mem_gen_lbls[i]);
     
     !(last_mouse_cap&1) && (mouse_cap&1) && mouse_in(xpos,ypos,w,h) ? (
       gen_action(i);
