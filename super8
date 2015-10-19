@@ -611,18 +611,20 @@ function draw_value_tweaker(xpos,ypos,midimem,draw, tweakmode, forcemousein, lbl
   w;
 );
 
-function draw_waveform(xpos,ycent,w,amp,bptr,srclen) local(minv,maxv, i,v, di)
+function draw_waveform(xpos,ycent,w,amp,bptr,srclen) local(minv,maxv, i,v, di, dbptr)
 (
   minv=100;
   maxv=-100;
   i=xpos|0;
+  dbptr = 1;
+  while (srclen > 100000) ( srclen*=0.5; dbptr *= 2.0; );
   di = w / srclen;
   ycent|=0;
   loop(srclen,
     v=bptr[0];
     minv=min(v,minv);
     maxv=max(v,maxv);
-    bptr+=1;
+    bptr+=dbptr;
     v=0|(i+=di);
     v>xpos ? (
       gfx_line(xpos=v,ycent+amp*minv,v,ycent+amp*maxv,0);
